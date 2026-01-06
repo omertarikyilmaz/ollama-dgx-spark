@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="index.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Header -->
@@ -45,15 +47,12 @@
                         <span class="value" id="selected-template-name">Seçiniz...</span>
                     </div>
                 </div>
-                
+
                 <div class="classification-area">
                     <div class="input-section">
                         <label for="news-input">Haber Metni</label>
-                        <textarea 
-                            id="news-input" 
-                            placeholder="Sınıflandırılacak haber metnini buraya yapıştırın..."
-                            rows="8"
-                        ></textarea>
+                        <textarea id="news-input" placeholder="Sınıflandırılacak haber metnini buraya yapıştırın..."
+                            rows="8"></textarea>
                         <div class="input-actions">
                             <button id="classify-btn" class="btn btn-large btn-primary" disabled>
                                 <span class="btn-icon">🚀</span>
@@ -128,23 +127,23 @@
                         </div>
                         <div class="form-group">
                             <label for="template-model">Model</label>
-                            <select id="template-model">
-                                <option value="qwen2.5:32b-instruct-q4_K_M">Qwen 2.5 32B (Önerilen)</option>
-                                <option value="qwen2.5:14b-instruct-q4_K_M">Qwen 2.5 14B (Hızlı)</option>
-                                <option value="qwen2.5:7b-instruct-q4_K_M">Qwen 2.5 7B (Çok Hızlı)</option>
-                                <option value="llama3.3:70b-instruct-q4_K_M">Llama 3.3 70B</option>
+                            <select id="template-model" disabled>
+                                <option value="qwen2.5:32b-instruct-q4_K_M" selected>Qwen 2.5 32B</option>
                             </select>
+                            <small>Sabit model - değiştirilemez</small>
                         </div>
                         <div class="form-group">
                             <label for="template-prompt">Sistem Prompt'u</label>
-                            <textarea id="template-prompt" rows="6" placeholder="Haberleri sınıflandıracak AI asistanın açıklaması..."></textarea>
+                            <textarea id="template-prompt" rows="6"
+                                placeholder="Haberleri sınıflandıracak AI asistanın açıklaması..."></textarea>
                         </div>
                         <div class="form-group">
                             <label>Çıktı Alanları (JSON Schema)</label>
                             <div id="tools-editor" class="tools-editor">
                                 <!-- Dynamic fields will be added here -->
                             </div>
-                            <button type="button" id="add-field-btn" class="btn btn-secondary btn-small">+ Alan Ekle</button>
+                            <button type="button" id="add-field-btn" class="btn btn-secondary btn-small">+ Alan
+                                Ekle</button>
                         </div>
                         <div class="form-group form-row">
                             <div>
@@ -158,7 +157,8 @@
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary">Şablonu Kaydet</button>
-                            <button type="button" id="delete-template-btn" class="btn btn-danger" style="display:none;">Sil</button>
+                            <button type="button" id="delete-template-btn" class="btn btn-danger"
+                                style="display:none;">Sil</button>
                         </div>
                     </form>
                 </div>
@@ -171,4 +171,5 @@
 
     <script src="app.js"></script>
 </body>
+
 </html>
