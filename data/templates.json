@@ -1,0 +1,37 @@
+{
+    "emniyet01": {
+        "id": "emniyet01",
+        "name": "İstanbul Emniyet",
+        "model": "qwen2.5:32b-instruct-q4_K_M",
+        "prompt_desc": "Genel Açıklama: İstanbul emniyet müdürlüğü için haberleri sınıflayacak bir asistansın. istanbul_ilceleri = [\"Adalar\", \"Arnavutköy\", \"Ataşehir\", \"Avcılar\", \"Bağcılar\", \"Bahçelievler\", \"Bakırköy\", \"Başakşehir\", \"Bayrampaşa\", \"Beşiktaş\", \"Beyoğlu\", \"Büyükçekmece\", \"Çatalca\", \"Çekmeköy\", \"Esenler\", \"Esenyurt\", \"Eyüp\", \"Fatih\", \"Gaziosmanpaşa\", \"Güngören\", \"Kadıköy\", \"Kağıthane\", \"Kartal\", \"Küçükçekmece\", \"Maltepe\", \"Pendik\", \"Sancaktepe\", \"Sarıyer\", \"Silivri\", \"Sultanbeyli\", \"Sultangazi\", \"Şişli\", \"Şile\", \"Tuzla\", \"Ümraniye\", \"Üsküdar\", \"Zeytinburnu\"]. Faaliyet Listesi: ['Trafik Denetleme Haberleri', 'Terörle Mücadele Haberleri', 'Siber Suç Haberleri', 'Narkotik Haberleri', 'Mali Suç Haberleri', 'Kaçakçılık Haberleri', 'Çevik Kuvvet Haberleri', 'Destek Hizmetleri Haberleri', 'Asayiş haberleri', 'Organize Suçlarla Mücadele Haberleri', 'Göçmen Haberleri', 'Toplumsal Olaylara Müdahale Haberleri', 'Spor Haberleri', 'Kurumsal Haberler']. Verilen haberi; Basın İçeriği, Faaliyet Alanı, Yorum ve Kategori kriterlerine göre sınıfla.",
+        "tools": {
+            "Basın İçeriği": {
+                "description": "Haberde İstanbul emniyet müdürlüğünün olup olmadığını ifade eder.",
+                "type": "string",
+                "enum": ["Evet", "Hayır"]
+            },
+            "Faaliyet Alanı": {
+                "description": "Bu alan haberin genel konusunun kategorisidir.",
+                "type": "string",
+                "enum": ["Trafik Denetleme Haberleri", "Terörle Mücadele Haberleri", "Siber Suç Haberleri", "Narkotik Haberleri", "Mali Suç Haberleri", "Kaçakçılık Haberleri", "Çevik Kuvvet Haberleri", "Destek Hizmetleri Haberleri", "Asayiş Haberleri", "Organize Suçlarla Mücadele Haberleri", "Göçmen Haberleri", "Toplumsal Olaylara Müdahale Haberleri", "Spor Haberleri", "Kurumsal Haberler", "Diğer Haberler"]
+            },
+            "Yorum": {
+                "description": "Haber içeriğinin İstanbul emniyet müdürlüğü açısından okuyucuda bıraktığı duygu durumu.",
+                "type": "string",
+                "enum": ["NEGATİF", "NÖTR", "POZİTİF"]
+            },
+            "Kategori": {
+                "description": "Haberin geçtiği İstanbul ilçesi.",
+                "type": "string",
+                "enum": ["Adalar", "Arnavutköy", "Ataşehir", "Avcılar", "Bağcılar", "Bahçelievler", "Bakırköy", "Başakşehir", "Bayrampaşa", "Beşiktaş", "Beyoğlu", "Büyükçekmece", "Çatalca", "Çekmeköy", "Esenler", "Esenyurt", "Eyüp", "Fatih", "Gaziosmanpaşa", "Güngören", "Kadıköy", "Kağıthane", "Kartal", "Küçükçekmece", "Maltepe", "Pendik", "Sancaktepe", "Sarıyer", "Silivri", "Sultanbeyli", "Sultangazi", "Şişli", "Şile", "Tuzla", "Ümraniye", "Üsküdar", "Zeytinburnu", "İstanbul (Haber tüm İstanbul'u kapsadığı ve spesifik bir ilçe belirtilmedi)", "İstanbul Dışı Bir Yer"]
+            },
+            "Konu": {
+                "description": "İstanbul emniyeti açısından konuyu anlatan en iyi başlığı yaz. (maksimum 7 kelime).",
+                "type": "string"
+            }
+        },
+        "keep_alive": "10m",
+        "num_ctx": 4096,
+        "temperature": 0.0
+    }
+}

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Haber Sınıflandırıcı - KV Cache Yönetimi</title>
+    <link rel="stylesheet" href="index.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">⚡</span>
+                <h1>Ollama Haber Sınıflandırıcı</h1>
+            </div>
+            <div class="header-status">
+                <span id="ollama-status" class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Bağlanıyor...</span>
+                </span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Panel: Templates -->
+            <aside class="panel templates-panel">
+                <div class="panel-header">
+                    <h2>📋 Şablonlar</h2>
+                    <button id="new-template-btn" class="btn btn-primary">+ Yeni</button>
+                </div>
+                <div id="templates-list" class="templates-list">
+                    <!-- Templates will be loaded here -->
+                </div>
+            </aside>
+
+            <!-- Center: Classification -->
+            <section class="panel main-panel">
+                <div class="panel-header">
+                    <h2>📰 Haber Sınıflandırma</h2>
+                    <div class="selected-template" id="selected-template">
+                        <span class="label">Şablon:</span>
+                        <span class="value" id="selected-template-name">Seçiniz...</span>
+                    </div>
+                </div>
+                
+                <div class="classification-area">
+                    <div class="input-section">
+                        <label for="news-input">Haber Metni</label>
+                        <textarea 
+                            id="news-input" 
+                            placeholder="Sınıflandırılacak haber metnini buraya yapıştırın..."
+                            rows="8"
+                        ></textarea>
+                        <div class="input-actions">
+                            <button id="classify-btn" class="btn btn-large btn-primary" disabled>
+                                <span class="btn-icon">🚀</span>
+                                Sınıflandır
+                            </button>
+                            <button id="clear-btn" class="btn btn-secondary">Temizle</button>
+                        </div>
+                    </div>
+
+                    <div class="result-section" id="result-section">
+                        <div class="result-header">
+                            <h3>Sonuç</h3>
+                            <div class="metrics" id="metrics">
+                                <span class="metric">
+                                    <span class="metric-label">Süre:</span>
+                                    <span class="metric-value" id="response-time">--</span>
+                                </span>
+                                <span class="metric">
+                                    <span class="metric-label">Hız:</span>
+                                    <span class="metric-value" id="tokens-per-sec">--</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div id="result-content" class="result-content">
+                            <div class="placeholder">Sonuç burada görünecek...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Settings & Template Editor -->
+            <aside class="panel settings-panel">
+                <div class="panel-tabs">
+                    <button class="tab-btn active" data-tab="settings">⚙️ Ayarlar</button>
+                    <button class="tab-btn" data-tab="editor">✏️ Şablon Düzenle</button>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="settings-tab" class="tab-content active">
+                    <div class="settings-section">
+                        <h3>KV Cache Ayarları</h3>
+                        <div class="form-group">
+                            <label for="kv-cache-type">Quantization</label>
+                            <select id="kv-cache-type">
+                                <option value="q4_0">Q4_0 (En Hızlı)</option>
+                                <option value="q8_0" selected>Q8_0 (Dengeli)</option>
+                                <option value="f16">F16 (En Kaliteli)</option>
+                            </select>
+                            <small>Düşük quantization = daha hızlı, daha az bellek</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="num-parallel">Paralel İstek</label>
+                            <input type="number" id="num-parallel" value="4" min="1" max="16">
+                            <small>Aynı anda işlenecek istek sayısı</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="keep-alive">Keep Alive</label>
+                            <input type="text" id="keep-alive" value="10m">
+                            <small>Model bellekte kalma süresi (örn: 5m, 1h)</small>
+                        </div>
+                        <button id="save-settings-btn" class="btn btn-primary">Ayarları Kaydet</button>
+                    </div>
+                </div>
+
+                <!-- Template Editor Tab -->
+                <div id="editor-tab" class="tab-content">
+                    <form id="template-form" class="template-editor">
+                        <input type="hidden" id="template-id">
+                        <div class="form-group">
+                            <label for="template-name">Şablon Adı</label>
+                            <input type="text" id="template-name" placeholder="Örn: İstanbul Emniyet">
+                        </div>
+                        <div class="form-group">
+                            <label for="template-model">Model</label>
+                            <select id="template-model">
+                                <option value="qwen2.5:32b-instruct-q4_K_M">Qwen 2.5 32B (Önerilen)</option>
+                                <option value="qwen2.5:14b-instruct-q4_K_M">Qwen 2.5 14B (Hızlı)</option>
+                                <option value="qwen2.5:7b-instruct-q4_K_M">Qwen 2.5 7B (Çok Hızlı)</option>
+                                <option value="llama3.3:70b-instruct-q4_K_M">Llama 3.3 70B</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="template-prompt">Sistem Prompt'u</label>
+                            <textarea id="template-prompt" rows="6" placeholder="Haberleri sınıflandıracak AI asistanın açıklaması..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Çıktı Alanları (JSON Schema)</label>
+                            <div id="tools-editor" class="tools-editor">
+                                <!-- Dynamic fields will be added here -->
+                            </div>
+                            <button type="button" id="add-field-btn" class="btn btn-secondary btn-small">+ Alan Ekle</button>
+                        </div>
+                        <div class="form-group form-row">
+                            <div>
+                                <label for="template-keepalive">Keep Alive</label>
+                                <input type="text" id="template-keepalive" value="10m">
+                            </div>
+                            <div>
+                                <label for="template-ctx">Context Size</label>
+                                <input type="number" id="template-ctx" value="4096">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Şablonu Kaydet</button>
+                            <button type="button" id="delete-template-btn" class="btn btn-danger" style="display:none;">Sil</button>
+                        </div>
+                    </form>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
