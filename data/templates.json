@@ -3,34 +3,97 @@
         "id": "emniyet01",
         "name": "İstanbul Emniyet",
         "model": "qwen2.5:32b-instruct-q4_K_M",
-        "prompt_desc": "Genel Açıklama: İstanbul emniyet müdürlüğü için haberleri sınıflayacak bir asistansın. istanbul_ilceleri = [\"Adalar\", \"Arnavutköy\", \"Ataşehir\", \"Avcılar\", \"Bağcılar\", \"Bahçelievler\", \"Bakırköy\", \"Başakşehir\", \"Bayrampaşa\", \"Beşiktaş\", \"Beyoğlu\", \"Büyükçekmece\", \"Çatalca\", \"Çekmeköy\", \"Esenler\", \"Esenyurt\", \"Eyüp\", \"Fatih\", \"Gaziosmanpaşa\", \"Güngören\", \"Kadıköy\", \"Kağıthane\", \"Kartal\", \"Küçükçekmece\", \"Maltepe\", \"Pendik\", \"Sancaktepe\", \"Sarıyer\", \"Silivri\", \"Sultanbeyli\", \"Sultangazi\", \"Şişli\", \"Şile\", \"Tuzla\", \"Ümraniye\", \"Üsküdar\", \"Zeytinburnu\"]. Faaliyet Listesi: ['Trafik Denetleme Haberleri', 'Terörle Mücadele Haberleri', 'Siber Suç Haberleri', 'Narkotik Haberleri', 'Mali Suç Haberleri', 'Kaçakçılık Haberleri', 'Çevik Kuvvet Haberleri', 'Destek Hizmetleri Haberleri', 'Asayiş haberleri', 'Organize Suçlarla Mücadele Haberleri', 'Göçmen Haberleri', 'Toplumsal Olaylara Müdahale Haberleri', 'Spor Haberleri', 'Kurumsal Haberler']. Verilen haberi; Basın İçeriği, Faaliyet Alanı, Yorum ve Kategori kriterlerine göre sınıfla.",
+        "prompt_desc": "Sen İstanbul Emniyet Müdürlüğü için haber sınıflandırma yapan bir AI asistanısın. Görevin, verilen haber metnini analiz edip tüm alanları eksiksiz doldurmaktır.\n\nÖNEMLİ KURALLAR:\n1. HER ALANI MUTLAKA DOLDUR - Boş alan bırakma\n2. Emin olamadığın durumlarda en yakın kategoriyi seç\n3. Tüm cevapları Türkçe ver\n4. Sadece JSON formatında yanıt ver, başka açıklama ekleme\n\nİSTANBUL İLÇELERİ:\nAdalar, Arnavutköy, Ataşehir, Avcılar, Bağcılar, Bahçelievler, Bakırköy, Başakşehir, Bayrampaşa, Beşiktaş, Beyoğlu, Büyükçekmece, Çatalca, Çekmeköy, Esenler, Esenyurt, Eyüp, Fatih, Gaziosmanpaşa, Güngören, Kadıköy, Kağıthane, Kartal, Küçükçekmece, Maltepe, Pendik, Sancaktepe, Sarıyer, Silivri, Sultanbeyli, Sultangazi, Şişli, Şile, Tuzla, Ümraniye, Üsküdar, Zeytinburnu\n\nFAALİYET ALANLARI:\n- Trafik Denetleme Haberleri: Trafik kazaları, cezaları, denetimleri\n- Terörle Mücadele Haberleri: Terör operasyonları, gözaltılar\n- Siber Suç Haberleri: Dolandırıcılık, kimlik hırsızlığı, siber saldırılar\n- Narkotik Haberleri: Uyuşturucu operasyonları, ele geçirmeler\n- Mali Suç Haberleri: Dolandırıcılık, kara para aklama\n- Kaçakçılık Haberleri: Yasa dışı mal ticareti\n- Çevik Kuvvet Haberleri: Toplumsal olaylara müdahale\n- Destek Hizmetleri Haberleri: Lojistik, eğitim, personel\n- Asayiş Haberleri: Hırsızlık, gasp, cinayet, kavga\n- Organize Suçlarla Mücadele Haberleri: Örgüt operasyonları\n- Göçmen Haberleri: Yasa dışı göç, insan ticareti\n- Toplumsal Olaylara Müdahale Haberleri: Protesto, gösteri, yürüyüş\n- Spor Haberleri: Spor etkinlikleri güvenliği\n- Kurumsal Haberler: Kurum faaliyetleri, atamalar\n- Diğer Haberler: Yukarıdakilere uymayan haberler\n\nSINIFLANDIRMA ALANLARI:\n\n1. Basın İçeriği:\n   - Evet: İstanbul Emniyet Müdürlüğü ile ilgili\n   - Hayır: İlgisiz\n\n2. Faaliyet Alanı:\n   Yukarıdaki 15 kategoriden birini seç. Emin değilsen 'Diğer Haberler' seç.\n\n3. Yorum:\n   - POZİTİF: Emniyet için olumlu (başarılı operasyon, ödül)\n   - NEGATİF: Emniyet için olumsuz (eleştiri, başarısızlık)\n   - NÖTR: Tarafsız bilgilendirme\n\n4. Kategori:\n   - Haber hangi ilçede geçiyorsa o ilçeyi seç\n   - Birden fazla ilçe varsa en önemlisini seç\n   - Tüm İstanbul'u kapsıyorsa: 'İstanbul (Haber tüm İstanbul'u kapsadığı ve spesifik bir ilçe belirtilmedi)'\n   - İstanbul dışıysa: 'İstanbul Dışı Bir Yer'\n\n5. Konu:\n   Maksimum 7 kelimelik başlık yaz. Format: 'İlçe - Konu'\n   Örnek: 'Kadıköy - Trafik magandaları kameraya yansıdı'\n\nHER ALANI MUTLAKA DOLDUR!",
         "tools": {
             "Basın İçeriği": {
                 "description": "Haberde İstanbul emniyet müdürlüğünün olup olmadığını ifade eder.",
                 "type": "string",
-                "enum": ["Evet", "Hayır"]
+                "enum": [
+                    "Evet",
+                    "Hayır"
+                ]
             },
             "Faaliyet Alanı": {
                 "description": "Bu alan haberin genel konusunun kategorisidir.",
                 "type": "string",
-                "enum": ["Trafik Denetleme Haberleri", "Terörle Mücadele Haberleri", "Siber Suç Haberleri", "Narkotik Haberleri", "Mali Suç Haberleri", "Kaçakçılık Haberleri", "Çevik Kuvvet Haberleri", "Destek Hizmetleri Haberleri", "Asayiş Haberleri", "Organize Suçlarla Mücadele Haberleri", "Göçmen Haberleri", "Toplumsal Olaylara Müdahale Haberleri", "Spor Haberleri", "Kurumsal Haberler", "Diğer Haberler"]
+                "enum": [
+                    "Trafik Denetleme Haberleri",
+                    "Terörle Mücadele Haberleri",
+                    "Siber Suç Haberleri",
+                    "Narkotik Haberleri",
+                    "Mali Suç Haberleri",
+                    "Kaçakçılık Haberleri",
+                    "Çevik Kuvvet Haberleri",
+                    "Destek Hizmetleri Haberleri",
+                    "Asayiş Haberleri",
+                    "Organize Suçlarla Mücadele Haberleri",
+                    "Göçmen Haberleri",
+                    "Toplumsal Olaylara Müdahale Haberleri",
+                    "Spor Haberleri",
+                    "Kurumsal Haberler",
+                    "Diğer Haberler"
+                ]
             },
             "Yorum": {
                 "description": "Haber içeriğinin İstanbul emniyet müdürlüğü açısından okuyucuda bıraktığı duygu durumu.",
                 "type": "string",
-                "enum": ["NEGATİF", "NÖTR", "POZİTİF"]
+                "enum": [
+                    "NEGATİF",
+                    "NÖTR",
+                    "POZİTİF"
+                ]
             },
             "Kategori": {
                 "description": "Haberin geçtiği İstanbul ilçesi.",
                 "type": "string",
-                "enum": ["Adalar", "Arnavutköy", "Ataşehir", "Avcılar", "Bağcılar", "Bahçelievler", "Bakırköy", "Başakşehir", "Bayrampaşa", "Beşiktaş", "Beyoğlu", "Büyükçekmece", "Çatalca", "Çekmeköy", "Esenler", "Esenyurt", "Eyüp", "Fatih", "Gaziosmanpaşa", "Güngören", "Kadıköy", "Kağıthane", "Kartal", "Küçükçekmece", "Maltepe", "Pendik", "Sancaktepe", "Sarıyer", "Silivri", "Sultanbeyli", "Sultangazi", "Şişli", "Şile", "Tuzla", "Ümraniye", "Üsküdar", "Zeytinburnu", "İstanbul (Haber tüm İstanbul'u kapsadığı ve spesifik bir ilçe belirtilmedi)", "İstanbul Dışı Bir Yer"]
+                "enum": [
+                    "Adalar",
+                    "Arnavutköy",
+                    "Ataşehir",
+                    "Avcılar",
+                    "Bağcılar",
+                    "Bahçelievler",
+                    "Bakırköy",
+                    "Başakşehir",
+                    "Bayrampaşa",
+                    "Beşiktaş",
+                    "Beyoğlu",
+                    "Büyükçekmece",
+                    "Çatalca",
+                    "Çekmeköy",
+                    "Esenler",
+                    "Esenyurt",
+                    "Eyüp",
+                    "Fatih",
+                    "Gaziosmanpaşa",
+                    "Güngören",
+                    "Kadıköy",
+                    "Kağıthane",
+                    "Kartal",
+                    "Küçükçekmece",
+                    "Maltepe",
+                    "Pendik",
+                    "Sancaktepe",
+                    "Sarıyer",
+                    "Silivri",
+                    "Sultanbeyli",
+                    "Sultangazi",
+                    "Şişli",
+                    "Şile",
+                    "Tuzla",
+                    "Ümraniye",
+                    "Üsküdar",
+                    "Zeytinburnu",
+                    "İstanbul (Haber tüm İstanbul'u kapsadığı ve spesifik bir ilçe belirtilmedi)",
+                    "İstanbul Dışı Bir Yer"
+                ]
             },
             "Konu": {
                 "description": "İstanbul emniyeti açısından konuyu anlatan en iyi başlığı yaz. (maksimum 7 kelime).",
                 "type": "string"
             }
         },
-        "keep_alive": "10m",
+        "keep_alive": "20m",
         "num_ctx": 4096,
         "temperature": 0.0
     }

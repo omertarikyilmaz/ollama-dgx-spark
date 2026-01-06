@@ -65,15 +65,21 @@
                     <div class="result-section" id="result-section">
                         <div class="result-header">
                             <h3>Sonuç</h3>
-                            <div class="metrics" id="metrics">
-                                <span class="metric">
-                                    <span class="metric-label">Süre:</span>
-                                    <span class="metric-value" id="response-time">--</span>
-                                </span>
-                                <span class="metric">
-                                    <span class="metric-label">Hız:</span>
-                                    <span class="metric-value" id="tokens-per-sec">--</span>
-                                </span>
+                            <div class="result-actions">
+                                <button id="download-json-btn" class="btn btn-small btn-secondary"
+                                    style="display:none;">
+                                    📥 JSON İndir
+                                </button>
+                                <div class="metrics" id="metrics">
+                                    <span class="metric">
+                                        <span class="metric-label">Süre:</span>
+                                        <span class="metric-value" id="response-time">--</span>
+                                    </span>
+                                    <span class="metric">
+                                        <span class="metric-label">Hız:</span>
+                                        <span class="metric-value" id="tokens-per-sec">--</span>
+                                    </span>
+                                </div>
                             </div>
                         </div>
                         <div id="result-content" class="result-content">

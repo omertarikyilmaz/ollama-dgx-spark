@@ -305,6 +305,12 @@ textarea#news-input:focus {
     font-weight: 600;
 }
 
+.result-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
 .metrics {
     display: flex;
     gap: var(--space-lg);

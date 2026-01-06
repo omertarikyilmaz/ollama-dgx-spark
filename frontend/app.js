@@ -319,19 +319,31 @@ async function classifyNews() {
     }
 }
 
+// Global variable to store last result
+let lastClassificationResult = null;
+
 function displayResult(response) {
     const content = document.getElementById('result-content');
     const responseTime = document.getElementById('response-time');
     const tokensPerSec = document.getElementById('tokens-per-sec');
+    const downloadBtn = document.getElementById('download-json-btn');
 
     if (!response.success) {
         content.innerHTML = `<div style="color: var(--danger);">Hata: ${response.error}</div>`;
+        downloadBtn.style.display = 'none';
+        lastClassificationResult = null;
         return;
     }
+
+    // Store result for download
+    lastClassificationResult = response.result;
 
     // Update metrics
     responseTime.textContent = `${response.response_time_ms?.toFixed(0) || '--'}ms`;
     tokensPerSec.textContent = `${response.tokens_per_second?.toFixed(1) || '--'} t/s`;
+
+    // Show download button
+    downloadBtn.style.display = 'inline-flex';
 
     // Render result fields
     const result = response.result;
@@ -345,6 +357,26 @@ function displayResult(response) {
     } else {
         content.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
     }
+}
+
+function downloadJSON() {
+    if (!lastClassificationResult) {
+        showToast('İndirilecek sonuç yok', 'error');
+        return;
+    }
+
+    const dataStr = JSON.stringify(lastClassificationResult, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `siniflandirma_${new Date().getTime()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showToast('JSON indirildi', 'success');
 }
 
 // ============================================
@@ -426,9 +458,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Classification
     document.getElementById('classify-btn').addEventListener('click', classifyNews);
+    document.getElementById('download-json-btn').addEventListener('click', downloadJSON);
     document.getElementById('clear-btn').addEventListener('click', () => {
         document.getElementById('news-input').value = '';
         document.getElementById('result-content').innerHTML = '<div class="placeholder">Sonuç burada görünecek...</div>';
+        document.getElementById('download-json-btn').style.display = 'none';
+        lastClassificationResult = null;
     });
 
     // Settings
