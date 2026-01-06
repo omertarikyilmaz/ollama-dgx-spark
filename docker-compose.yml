@@ -21,12 +21,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:11434/api/tags || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   backend:
     build: ./backend
@@ -38,10 +32,23 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:32b-instruct-q4_K_M}
     depends_on:
-      ollama:
-        condition: service_healthy
+      - ollama
     volumes:
       - ./data:/app/data
+
+  frontend:
+    image: nginx:alpine
+    container_name: ollama-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+
+volumes:
+  ollama_data:
 
   frontend:
     image: nginx:alpine
