@@ -3,7 +3,8 @@
  * Handles template management, classification, and KV cache settings
  */
 
-const API_BASE = 'http://localhost:8000';
+// API base URL - uses same host as frontend but port 8000
+const API_BASE = `http://${window.location.hostname}:8000`;
 
 // State
 let templates = [];
