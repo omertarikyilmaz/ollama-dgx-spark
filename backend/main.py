@@ -16,9 +16,17 @@ from models import (
     ClassificationResponse,
     KVCacheSettings,
     TemplateListResponse,
-    KVCacheType
+    KVCacheType,
+    ChatRequest,
+    ChatResponse,
+    LanguageDetectRequest,
+    LanguageDetectResponse,
+    SectorClassifyRequest,
+    SectorClassifyResponse,
+    ChatMessage
 )
 from services.ollama_client import get_ollama_client, OllamaClient
+import langid
 
 
 # Data storage paths
@@ -240,3 +248,129 @@ async def classify_news_batch(template_id: str, news_texts: List[str]):
         "results": results,
         "count": len(results)
     }
+
+
+# ============== New Services ==============
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """Direct chat with the AI model"""
+    client = get_ollama_client()
+    
+    # Format chat history for the prompt if needed, 
+    # but for now we'll use a simpler approach since our client currently handles single prompts.
+    # We can enhance the client later for full chat history support.
+    context = ""
+    for msg in request.history:
+        context += f"{msg.role.upper()}: {msg.content}\n"
+    
+    full_prompt = f"{context}USER: {request.message}\nASSISTANT:"
+    
+    try:
+        # Using generate with a more free-form JSON schema or just text
+        result = await client.generate(
+            model=request.model,
+            prompt=full_prompt,
+            system_prompt="Sen Medya Takip Merkezi (MTM) için çalışan profesyonel ve yardımsever bir yapay zeka asistanısın. Kısa, öz ve doğru yanıtlar ver.",
+            json_schema={"response": {"type": "string", "description": "The assistant's response"}},
+            keep_alive="10m"
+        )
+        
+        return ChatResponse(
+            response=result["result"]["response"],
+            response_time_ms=result["response_time_ms"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+LANG_MAP = {
+    'af': 'Afrikanca', 'am': 'Amharca', 'an': 'Aragonca', 'ar': 'Arapça',
+    'as': 'Assamca', 'az': 'Azerice', 'be': 'Belarusça', 'bg': 'Bulgarca',
+    'bn': 'Bengalce', 'br': 'Bretonca', 'bs': 'Boşnakça', 'ca': 'Katalanca',
+    'cs': 'Çekçe', 'cy': 'Galce', 'da': 'Danca', 'de': 'Almanca',
+    'dz': 'Dzongkha', 'el': 'Yunanca', 'en': 'İngilizce', 'eo': 'Esperanto',
+    'es': 'İspanyolca', 'et': 'Estonca', 'eu': 'Baskça', 'fa': 'Farsça',
+    'fi': 'Fince', 'fo': 'Faroece', 'fr': 'Fransızca', 'ga': 'İrlandaca',
+    'gl': 'Galiçyaca', 'gu': 'Guceratça', 'he': 'İbranice', 'hi': 'Hintçe',
+    'hr': 'Hırvatça', 'ht': 'Haiti Kreyolu', 'hu': 'Macarca', 'hy': 'Ermenice',
+    'id': 'Endonezyaca', 'is': 'İzlandaca', 'it': 'İtalyanca', 'ja': 'Japonca',
+    'jv': 'Cavaca', 'ka': 'Gürcüce', 'kk': 'Kazakça', 'km': 'Khmer',
+    'kn': 'Kannada', 'ko': 'Korece', 'ku': 'Kürtçe', 'ky': 'Kırgızca',
+    'la': 'Latince', 'lb': 'Lüksemburgca', 'lo': 'Lao', 'lt': 'Litvanca',
+    'lv': 'Letonca', 'mg': 'Malgaşça', 'mk': 'Makedonca', 'ml': 'Malayalam',
+    'mn': 'Moğolca', 'mr': 'Marathi', 'ms': 'Malayca', 'mt': 'Maltaca',
+    'nb': 'Norveççe (Bokmål)', 'ne': 'Nepalce', 'nl': 'Felemenkçe', 'nn': 'Norveççe (Nynorsk)',
+    'no': 'Norveççe', 'oc': 'Oksitanca', 'or': 'Odia', 'pa': 'Pencapça',
+    'pl': 'Lehçe', 'ps': 'Peştuca', 'pt': 'Portekizce', 'qu': 'Keçuva dili',
+    'ro': 'Romence', 'ru': 'Rusça', 'rw': 'Ruandaca', 'se': 'Kuzey Laponca',
+    'si': 'Sinhala', 'sk': 'Slovakça', 'sl': 'Slovence', 'sq': 'Arnavutça',
+    'sr': 'Sırpça', 'sv': 'İsveççe', 'sw': 'Svahili', 'ta': 'Tamilce',
+    'te': 'Teluguca', 'th': 'Tayca', 'tl': 'Tagalog', 'tr': 'Türkçe',
+    'ug': 'Uygurca', 'uk': 'Ukraynaca', 'ur': 'Urduca', 'uz': 'Özbekçe',
+    'vi': 'Vietnamca', 'wa': 'Vallonca', 'xh': 'Xhosa', 'zh': 'Çince',
+    'zu': 'Zuluca'
+}
+
+@app.post("/detect-language", response_model=LanguageDetectResponse)
+async def detect_language(request: LanguageDetectRequest):
+    """Detect the language of the provided text using local langid library"""
+    try:
+        # local classification: returns (iso_code, confidence)
+        iso_code, confidence = langid.classify(request.text)
+        
+        language_name = LANG_MAP.get(iso_code, iso_code.upper())
+        
+        return LanguageDetectResponse(
+            language=iso_code,
+            language_name=language_name,
+            confidence=float(confidence) if confidence < 1 else 0.99
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/classify-sector", response_model=SectorClassifyResponse)
+async def classify_sector(request: SectorClassifyRequest):
+    """Classify the sector and importance level of a news article using AI"""
+    client = get_ollama_client()
+    
+    json_schema = {
+        "sector": {"type": "string", "description": "Ana sektör (örn: Teknoloji, Ekonomi, Sağlık, Spor, Siyaset, Magazin)"},
+        "subsector": {"type": "string", "description": "Alt sektör veya detaylı kategori"},
+        "keywords": {"type": "array", "items": {"type": "string"}, "description": "Haberle ilgili 3-5 adet anahtar kelime"},
+        "importance_level": {"type": "integer", "description": "1 ile 5 arası önem seviyesi"},
+        "importance_reasoning": {"type": "string", "description": "Bu önem seviyesinin neden seçildiğinin kısa açıklaması"},
+        "confidence": {"type": "number", "description": "Güven skoru"}
+    }
+    
+    system_prompt = """Sen bir medya analiz uzmanısın. Verilen haberi analiz et ve ilgili sektör, alt sektör ve önem seviyesini belirle.
+
+Önem Skalası ve Kriterleri:
+Seviye 1: KRİTİK (En Yüksek Önem) - Sektörün tamamını etkileyen, acil müdahale gerektiren büyük sistemik riskler (Doğal afet, kritik regülasyon, sistem çökmesi).
+Seviye 2: ÇOK ÖNEMLİ - Yapısal değişikliklere yol açabilecek ulusal gelişmeler (Büyük birleşmeler, pazar dinamiklerini değiştiren teknolojik dönüşümler).
+Seviye 3: ÖNEMLİ - Belirli segmentleri etkileyen orta vadeli gelişmeler (Yeni ürün lansmanı, sektörel raporlar, orta ölçekli yatırımlar).
+Seviye 4: ORTA ÖNEM - Günlük işleyişi ilgilendiren rutin gelişmeler (Firma finansalları, personel değişiklikleri, küçük projeler).
+Seviye 5: DÜŞÜK ÖNEM - Bilgilendirme amaçlı minimal etkili haberler (Küçük etkinlikler, rutin duyurular, sosyal sorumluluk).
+
+Yanıtı sadece belirtilen JSON formatında ver."""
+    
+    try:
+        result = await client.generate(
+            model="qwen2.5:32b-instruct-q4_K_M", 
+            prompt=request.news_text,
+            system_prompt=system_prompt,
+            json_schema=json_schema,
+            keep_alive="5m"
+        )
+        
+        return SectorClassifyResponse(
+            sector=result["result"]["sector"],
+            subsector=result["result"]["subsector"],
+            keywords=result["result"]["keywords"],
+            importance_level=result["result"]["importance_level"],
+            importance_reasoning=result["result"]["importance_reasoning"],
+            confidence=result["result"].get("confidence", 0.9)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

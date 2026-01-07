@@ -57,3 +57,44 @@ class TemplateListResponse(BaseModel):
     """List of templates"""
     templates: List[PromptTemplate]
     count: int
+
+
+# ============== New Service Models ==============
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: List[ChatMessage] = []
+    model: str = "qwen2.5:32b-instruct-q4_K_M"
+
+
+class ChatResponse(BaseModel):
+    response: str
+    response_time_ms: float
+
+
+class LanguageDetectRequest(BaseModel):
+    text: str
+
+
+class LanguageDetectResponse(BaseModel):
+    language: str
+    language_name: str
+    confidence: float
+
+
+class SectorClassifyRequest(BaseModel):
+    news_text: str
+
+
+class SectorClassifyResponse(BaseModel):
+    sector: str
+    subsector: str
+    keywords: List[str]
+    importance_level: int = Field(..., ge=1, le=5, description="1: Kritik, 2: Çok Önemli, 3: Önemli, 4: Orta, 5: Düşük")
+    importance_reasoning: str = Field(..., description="Önem seviyesinin atanma gerekçesi")
+    confidence: float
