@@ -460,6 +460,12 @@ async def generate_report(files: List[UploadFile] = File(...)):
             workbook = writer.book
             summary_sheet = writer.sheets['Yönetici Özeti']
             
+            # Set column widths to fit content
+            summary_sheet.set_column('A:A', 15)  # Mecra
+            summary_sheet.set_column('B:B', 12)  # Haber Adedi
+            summary_sheet.set_column('C:C', 15)  # Erişim
+            summary_sheet.set_column('D:D', 20)  # Reklam Eşdeğeri(TL)
+            
             # Format header
             header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
             for col_num, value in enumerate(summary.columns.values):
@@ -472,13 +478,13 @@ async def generate_report(files: List[UploadFile] = File(...)):
             chart1 = workbook.add_chart({'type': 'pie'})
             chart1.add_series({
                 'name': 'Haber Adedi',
-                'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],  # Mecra column
-                'values': ['Yönetici Özeti', 1, 1, data_rows, 1],      # Haber Adedi column
+                'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
+                'values': ['Yönetici Özeti', 1, 1, data_rows, 1],
                 'data_labels': {'percentage': True, 'category': False},
             })
             chart1.set_title({'name': 'HABER ADEDİ DAĞILIM YÜZDESİ'})
             chart1.set_style(10)
-            summary_sheet.insert_chart('A8', chart1, {'x_scale': 0.8, 'y_scale': 0.8})
+            summary_sheet.insert_chart('A7', chart1, {'x_scale': 0.9, 'y_scale': 0.9})
             
             # PIE CHART 2: Erişim Dağılım Yüzdesi
             if 'Erişim' in summary.columns:
@@ -491,7 +497,7 @@ async def generate_report(files: List[UploadFile] = File(...)):
                 })
                 chart2.set_title({'name': 'ERİŞİM DAĞILIM YÜZDESİ'})
                 chart2.set_style(10)
-                summary_sheet.insert_chart('F8', chart2, {'x_scale': 0.8, 'y_scale': 0.8})
+                summary_sheet.insert_chart('F7', chart2, {'x_scale': 0.9, 'y_scale': 0.9})
             
             # PIE CHART 3: Reklam Eşdeğeri Dağılım Yüzdesi
             if 'Reklam Eşdeğeri(TL)' in summary.columns:
@@ -504,7 +510,7 @@ async def generate_report(files: List[UploadFile] = File(...)):
                 })
                 chart3.set_title({'name': 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ'})
                 chart3.set_style(10)
-                summary_sheet.insert_chart('K8', chart3, {'x_scale': 0.8, 'y_scale': 0.8})
+                summary_sheet.insert_chart('K7', chart3, {'x_scale': 0.9, 'y_scale': 0.9})
 
         output.seek(0)
         return StreamingResponse(
