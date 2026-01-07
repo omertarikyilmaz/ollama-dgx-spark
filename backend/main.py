@@ -6,7 +6,7 @@ import json
 import uuid
 from pathlib import Path
 from typing import Dict, List
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
@@ -379,71 +379,118 @@ Yanıtı sadece belirtilen JSON formatında ver."""
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+async def extract_and_merge_data(files: List[UploadFile]):
+    if not files:
+        raise HTTPException(status_code=400, detail="Dosya yüklenmedi")
+
+    all_dfs = []
+    errors = []
+    for file in files:
+        content = await file.read()
+        try:
+            df = pd.read_excel(io.BytesIO(content))
+            all_dfs.append(df)
+            file.seek(0) # Reset for potential re-use if needed, though usually consumed once
+        except Exception as e:
+            print(f"Error reading {file.filename}: {e}")
+            continue
+
+    if not all_dfs:
+        raise HTTPException(status_code=400, detail="Geçerli bir Excel dosyası okunamadı")
+
+    # Merge
+    merged_df = pd.concat(all_dfs, ignore_index=True)
+    
+    # Filter NaN Mecra
+    if 'Mecra' in merged_df.columns:
+        merged_df = merged_df.dropna(subset=['Mecra'])
+
+    # Mecra mapping
+    def map_mecra(val):
+        if pd.isna(val): return "Diğer"
+        val_str = str(val).strip()
+        if "Elektronik Basın" in val_str: return "İnternet"
+        if "Görsel Basın" in val_str: return "TV"
+        if "Yazılı Basın" in val_str: return "Yazılı Basın"
+        return val_str
+
+    if 'Mecra' in merged_df.columns:
+        merged_df['Mecra_Grup'] = merged_df['Mecra'].apply(map_mecra)
+    else:
+        merged_df['Mecra_Grup'] = "Diğer"
+
+    # Numeric conversion
+    if 'Erişim' in merged_df.columns:
+        merged_df['Erişim'] = pd.to_numeric(merged_df['Erişim'], errors='coerce').fillna(0)
+    if 'Re.Eş. (TRY)' in merged_df.columns:
+        merged_df['Re.Eş. (TRY)'] = pd.to_numeric(merged_df['Re.Eş. (TRY)'], errors='coerce').fillna(0)
+
+    # Build summary
+    summary = merged_df.groupby('Mecra_Grup').size().reset_index(name='Haber Adedi')
+    summary.rename(columns={'Mecra_Grup': 'Mecra'}, inplace=True)
+    
+    if 'Erişim' in merged_df.columns:
+        erisim_sum = merged_df.groupby('Mecra_Grup')['Erişim'].sum().reset_index(name='Erişim')
+        summary = summary.merge(erisim_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
+        
+    if 'Re.Eş. (TRY)' in merged_df.columns:
+        re_sum = merged_df.groupby('Mecra_Grup')['Re.Eş. (TRY)'].sum().reset_index(name='Reklam Eşdeğeri(TL)')
+        summary = summary.merge(re_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
+
+    # Sort
+    order = {'Yazılı Basın': 0, 'İnternet': 1, 'TV': 2}
+    summary['sort_order'] = summary['Mecra'].map(order).fillna(99)
+    summary = summary.sort_values('sort_order').drop(columns=['sort_order']).reset_index(drop=True)
+
+    return merged_df, summary
+
+@app.post("/preview-report")
+async def preview_report(files: List[UploadFile] = File(...)):
+    try:
+        _, summary = await extract_and_merge_data(files)
+        
+        # Calculate totals
+        numeric_cols = summary.select_dtypes(include=['number']).columns.tolist()
+        totals = summary[numeric_cols].sum()
+        totals_dict = {'Mecra': 'Toplam'}
+        for col in numeric_cols:
+            totals_dict[col] = float(totals[col]) # Ensure native float for JSON
+
+        # Prepare summary for JSON
+        summary_records = summary.to_dict(orient='records')
+        
+        # Chart Data Preparation (for Chart.js)
+        # We need generic structure: labels, datasets
+        labels = summary['Mecra'].tolist()
+        
+        chart_data = {
+            'labels': labels,
+            'haber_adedi': summary['Haber Adedi'].tolist(),
+            'erisim': summary['Erişim'].tolist() if 'Erişim' in summary.columns else [],
+            'reklam': summary['Reklam Eşdeğeri(TL)'].tolist() if 'Reklam Eşdeğeri(TL)' in summary.columns else []
+        }
+
+        return {
+            "success": True,
+            "data": {
+                "summary_table": summary_records,
+                "totals": totals_dict,
+                "chart_data": chart_data
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.post("/generate-report")
-async def generate_report(files: List[UploadFile] = File(...)):
+async def generate_report(files: List[UploadFile] = File(...), layout_type: str = Form("standard")):
     """Merge multiple Excel files and generate a summary report with charts."""
     try:
-        if not files:
-            raise HTTPException(status_code=400, detail="Dosya yüklenmedi")
-
-        all_dfs = []
-        for file in files:
-            content = await file.read()
-            try:
-                df = pd.read_excel(io.BytesIO(content))
-                all_dfs.append(df)
-            except Exception as e:
-                print(f"Error reading {file.filename}: {e}")
-                continue
-
-        if not all_dfs:
-            raise HTTPException(status_code=400, detail="Geçerli bir Excel dosyası okunamadı")
-
-        # Merge all dataframes
-        merged_df = pd.concat(all_dfs, ignore_index=True)
+        merged_df, summary = await extract_and_merge_data(files)
         
-        # Filter out rows with NaN Mecra (summary rows in source files)
-        if 'Mecra' in merged_df.columns:
-            merged_df = merged_df.dropna(subset=['Mecra'])
-
-        # Mecra mapping logic
-        def map_mecra(val):
-            if pd.isna(val): return "Diğer"
-            val_str = str(val).strip()
-            if "Elektronik Basın" in val_str: return "İnternet"
-            if "Görsel Basın" in val_str: return "TV"
-            if "Yazılı Basın" in val_str: return "Yazılı Basın"
-            return val_str
-
-        if 'Mecra' in merged_df.columns:
-            merged_df['Mecra_Grup'] = merged_df['Mecra'].apply(map_mecra)
-        else:
-            merged_df['Mecra_Grup'] = "Diğer"
-
-        # Convert numeric columns
-        if 'Erişim' in merged_df.columns:
-            merged_df['Erişim'] = pd.to_numeric(merged_df['Erişim'], errors='coerce').fillna(0)
-        if 'Re.Eş. (TRY)' in merged_df.columns:
-            merged_df['Re.Eş. (TRY)'] = pd.to_numeric(merged_df['Re.Eş. (TRY)'], errors='coerce').fillna(0)
-
-        # Build summary - order: Yazılı Basın, İnternet, TV
-        summary = merged_df.groupby('Mecra_Grup').size().reset_index(name='Haber Adedi')
-        summary.rename(columns={'Mecra_Grup': 'Mecra'}, inplace=True)
-        
-        if 'Erişim' in merged_df.columns:
-            erisim_sum = merged_df.groupby('Mecra_Grup')['Erişim'].sum().reset_index(name='Erişim')
-            summary = summary.merge(erisim_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
-            
-        if 'Re.Eş. (TRY)' in merged_df.columns:
-            re_sum = merged_df.groupby('Mecra_Grup')['Re.Eş. (TRY)'].sum().reset_index(name='Reklam Eşdeğeri(TL)')
-            summary = summary.merge(re_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
-
-        # Sort by custom order: Yazılı Basın, İnternet, TV
-        order = {'Yazılı Basın': 0, 'İnternet': 1, 'TV': 2}
-        summary['sort_order'] = summary['Mecra'].map(order).fillna(99)
-        summary = summary.sort_values('sort_order').drop(columns=['sort_order']).reset_index(drop=True)
-
-        # Add Totals Row
+        # Add Totals Row for Excel
         numeric_cols = summary.select_dtypes(include=['number']).columns.tolist()
         totals = summary[numeric_cols].sum()
         totals_row = {'Mecra': 'Toplam'}
@@ -460,57 +507,56 @@ async def generate_report(files: List[UploadFile] = File(...)):
             workbook = writer.book
             summary_sheet = writer.sheets['Yönetici Özeti']
             
-            # Set column widths to fit content
-            summary_sheet.set_column('A:A', 15)  # Mecra
-            summary_sheet.set_column('B:B', 12)  # Haber Adedi
-            summary_sheet.set_column('C:C', 15)  # Erişim
-            summary_sheet.set_column('D:D', 20)  # Reklam Eşdeğeri(TL)
+            # Set column widths
+            summary_sheet.set_column('A:A', 15)
+            summary_sheet.set_column('B:B', 12)
+            summary_sheet.set_column('C:C', 15)
+            summary_sheet.set_column('D:D', 20)
             
-            # Format header
-            header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+            # Style Configuration
+            if layout_type == "modern":
+                header_bg = '#4A90E2' # Blue
+                header_font = 'white'
+                chart_style = 2
+            else: # standard
+                header_bg = '#D7E4BC' # Green-ish
+                header_font = 'black'
+                chart_style = 10
+
+            header_format = workbook.add_format({
+                'bold': True, 
+                'bg_color': header_bg, 
+                'font_color': header_font,
+                'border': 1
+            })
+            
             for col_num, value in enumerate(summary.columns.values):
                 summary_sheet.write(0, col_num, value, header_format)
             
-            # Number of data rows (excluding Toplam)
+            # ... Charts logic ...
             data_rows = len(summary) - 1
             
-            # PIE CHART 1: Haber Adedi Dağılım Yüzdesi
-            chart1 = workbook.add_chart({'type': 'pie'})
-            chart1.add_series({
-                'name': 'Haber Adedi',
-                'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
-                'values': ['Yönetici Özeti', 1, 1, data_rows, 1],
-                'data_labels': {'percentage': True, 'category': False},
-            })
-            chart1.set_title({'name': 'HABER ADEDİ DAĞILIM YÜZDESİ'})
-            chart1.set_style(10)
-            summary_sheet.insert_chart('A7', chart1, {'x_scale': 0.9, 'y_scale': 0.9})
-            
-            # PIE CHART 2: Erişim Dağılım Yüzdesi
-            if 'Erişim' in summary.columns:
-                chart2 = workbook.add_chart({'type': 'pie'})
-                chart2.add_series({
-                    'name': 'Erişim',
+            # Helper for charts
+            def add_pie_chart(col_idx, title, pos_cell):
+                chart = workbook.add_chart({'type': 'pie'})
+                chart.add_series({
+                    'name': title,
                     'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
-                    'values': ['Yönetici Özeti', 1, 2, data_rows, 2],
+                    'values': ['Yönetici Özeti', 1, col_idx, data_rows, col_idx],
                     'data_labels': {'percentage': True, 'category': False},
                 })
-                chart2.set_title({'name': 'ERİŞİM DAĞILIM YÜZDESİ'})
-                chart2.set_style(10)
-                summary_sheet.insert_chart('F7', chart2, {'x_scale': 0.9, 'y_scale': 0.9})
+                chart.set_title({'name': title})
+                chart.set_style(chart_style)
+                summary_sheet.insert_chart(pos_cell, chart, {'x_scale': 0.9, 'y_scale': 0.9})
+
+            add_pie_chart(1, 'HABER ADEDİ DAĞILIM YÜZDESİ', 'A7')
             
-            # PIE CHART 3: Reklam Eşdeğeri Dağılım Yüzdesi
-            if 'Reklam Eşdeğeri(TL)' in summary.columns:
-                chart3 = workbook.add_chart({'type': 'pie'})
-                chart3.add_series({
-                    'name': 'Reklam Eşdeğeri',
-                    'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
-                    'values': ['Yönetici Özeti', 1, 3, data_rows, 3],
-                    'data_labels': {'percentage': True, 'category': False},
-                })
-                chart3.set_title({'name': 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ'})
-                chart3.set_style(10)
-                summary_sheet.insert_chart('K7', chart3, {'x_scale': 0.9, 'y_scale': 0.9})
+            col_map = {col: i for i, col in enumerate(summary.columns)}
+            if 'Erişim' in col_map:
+                add_pie_chart(col_map['Erişim'], 'ERİŞİM DAĞILIM YÜZDESİ', 'F7')
+            
+            if 'Reklam Eşdeğeri(TL)' in col_map:
+                add_pie_chart(col_map['Reklam Eşdeğeri(TL)'], 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ', 'K7')
 
         output.seek(0)
         return StreamingResponse(

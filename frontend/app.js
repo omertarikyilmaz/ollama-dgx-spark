@@ -16,7 +16,10 @@ let currentState = {
         language: null,
         sector: null
     },
-    reportFiles: [] // Array of File objects for report generator
+    reportFiles: [], // Array of File objects for report generator
+    reportPreviewData: null,
+    selectedLayout: 'standard', // 'standard' or 'modern'
+    charts: {} // Store Chart.js instances
 };
 
 // Initial state load
@@ -423,26 +426,36 @@ function displayNewsResult(response) {
 
 window.handleReportFiles = function (files) {
     const newFiles = Array.from(files).filter(f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
-    currentState.reportFiles = [...currentState.reportFiles, ...newFiles];
+    newFiles.forEach(file => {
+        if (!currentState.reportFiles.some(f => f.name === file.name)) {
+            currentState.reportFiles.push(file);
+        }
+    });
+    renderSelectedFiles();
+};
+
+window.removeReportFile = function (index) {
+    currentState.reportFiles.splice(index, 1);
     renderSelectedFiles();
 };
 
 function renderSelectedFiles() {
     const list = document.getElementById('selected-files-list');
     const actions = document.getElementById('report-actions');
+
     if (!list) return;
 
     if (currentState.reportFiles.length === 0) {
         list.innerHTML = '';
-        actions.style.display = 'none';
+        if (actions) actions.style.display = 'none';
         return;
     }
 
-    actions.style.display = 'block';
+    if (actions) actions.style.display = 'block';
     list.innerHTML = currentState.reportFiles.map((file, index) => `
         <div class="file-item">
             <div class="file-info">
-                <i class="fas fa-file-excel"></i>
+                <i class="fas fa-file-excel" style="color: #10b981;"></i>
                 <span class="file-name">${file.name}</span>
             </div>
             <div class="remove-file" onclick="removeReportFile(${index})">
@@ -452,21 +465,49 @@ function renderSelectedFiles() {
     `).join('');
 }
 
-window.removeReportFile = function (index) {
-    currentState.reportFiles.splice(index, 1);
-    renderSelectedFiles();
+window.selectReportLayout = function (layout) {
+    currentState.selectedLayout = layout;
+    document.querySelectorAll('.layout-option').forEach(el => el.classList.remove('active'));
+    const activeEl = document.getElementById(`layout-${layout}`);
+    if (activeEl) activeEl.classList.add('active');
 };
 
-async function generateReport() {
+window.resetReportView = function () {
+    const previewSection = document.getElementById('report-preview-section');
+    if (previewSection) previewSection.style.display = 'none';
+
+    const uploadZone = document.getElementById('report-upload-zone');
+    if (uploadZone) uploadZone.style.display = 'flex';
+
+    const list = document.getElementById('selected-files-list');
+    if (list) list.style.display = 'block';
+
+    const actions = document.getElementById('report-actions');
+    if (actions) actions.style.display = 'block';
+
+    if (currentState.charts) {
+        Object.values(currentState.charts).forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') chart.destroy();
+        });
+    }
+    currentState.charts = {};
+    currentState.reportPreviewData = null;
+
+    renderSelectedFiles(); // Re-render logic to ensure correct state
+};
+
+window.previewReport = async function () {
     if (currentState.reportFiles.length === 0) {
         showToast('Lütfen en az bir dosya seçin', 'error');
         return;
     }
 
-    const btn = document.getElementById('generate-report-btn');
-    const originalContent = btn.innerHTML;
-    btn.innerHTML = '<span class="loading-spinner"></span> Rapor Hazırlanıyor...';
-    btn.disabled = true;
+    const btn = document.getElementById('preview-report-btn');
+    const originalContent = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Hazırlanıyor...';
+        btn.disabled = true;
+    }
 
     try {
         const formData = new FormData();
@@ -474,35 +515,170 @@ async function generateReport() {
             formData.append('files', file);
         });
 
+        const result = await apiCall('/preview-report', {
+            method: 'POST',
+            body: formData,
+            headers: {} // Browser sets boundary
+        });
+
+        if (result.success) {
+            currentState.reportPreviewData = result.data;
+            showPreviewUI();
+        } else {
+            showToast(`Hata: ${result.error}`, 'error');
+        }
+
+    } catch (error) {
+        console.error('Preview error:', error);
+        showToast('Önizleme alınamadı', 'error');
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }
+    }
+};
+
+function showPreviewUI() {
+    const uploadZone = document.getElementById('report-upload-zone');
+    if (uploadZone) uploadZone.style.display = 'none';
+
+    const list = document.getElementById('selected-files-list');
+    if (list) list.style.display = 'none';
+
+    const actions = document.getElementById('report-actions');
+    if (actions) actions.style.display = 'none';
+
+    const previewSection = document.getElementById('report-preview-section');
+    if (previewSection) previewSection.style.display = 'block';
+
+    renderPreviewTable();
+    // Small delay to ensure DOM is ready for charts
+    setTimeout(renderPreviewCharts, 100);
+}
+
+function renderPreviewTable() {
+    const tbody = document.querySelector('#preview-summary-table tbody');
+    const tfoot = document.querySelector('#preview-summary-table tfoot');
+    if (!tbody || !tfoot || !currentState.reportPreviewData) return;
+
+    const data = currentState.reportPreviewData;
+
+    tbody.innerHTML = data.summary_table.map(row => `
+        <tr>
+            <td>${row.Mecra || ''}</td>
+            <td>${row['Haber Adedi'] || 0}</td>
+            <td>${(row['Erişim'] || 0).toLocaleString('tr-TR')}</td>
+            <td>${(row['Reklam Eşdeğeri(TL)'] || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })}</td>
+        </tr>
+    `).join('');
+
+    const totals = data.totals;
+    if (totals) {
+        tfoot.innerHTML = `
+            <tr>
+                <td>${totals.Mecra}</td>
+                <td>${totals['Haber Adedi']}</td>
+                <td>${(totals['Erişim'] || 0).toLocaleString('tr-TR')}</td>
+                <td>${(totals['Reklam Eşdeğeri(TL)'] || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })}</td>
+            </tr>
+        `;
+    }
+}
+
+function renderPreviewCharts() {
+    const data = currentState.reportPreviewData ? currentState.reportPreviewData.chart_data : null;
+    if (!data) return;
+
+    const ctxHaber = document.getElementById('chart-haber');
+    const ctxErisim = document.getElementById('chart-erisim');
+    const ctxReklam = document.getElementById('chart-reklam');
+
+    const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#6366f1'];
+
+    const createChart = (canvas, label, values) => {
+        if (!canvas) return null;
+        return new Chart(canvas.getContext('2d'), {
+            type: 'pie',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors.slice(0, data.labels.length),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                }
+            }
+        });
+    };
+
+    if (currentState.charts.haber) currentState.charts.haber.destroy();
+    currentState.charts.haber = createChart(ctxHaber, 'Haber Adedi', data.haber_adedi);
+
+    if (data.erisim && data.erisim.some(v => v > 0)) {
+        if (currentState.charts.erisim) currentState.charts.erisim.destroy();
+        currentState.charts.erisim = createChart(ctxErisim, 'Erişim', data.erisim);
+    }
+
+    if (data.reklam && data.reklam.some(v => v > 0)) {
+        if (currentState.charts.reklam) currentState.charts.reklam.destroy();
+        currentState.charts.reklam = createChart(ctxReklam, 'Reklam Eşdeğeri', data.reklam);
+    }
+}
+
+window.downloadFinalReport = async function () {
+    const btn = document.querySelector('.preview-actions .btn-primary');
+    const originalContent = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> İndiriliyor...';
+        btn.disabled = true;
+    }
+
+    try {
+        const formData = new FormData();
+        currentState.reportFiles.forEach(file => {
+            formData.append('files', file);
+        });
+        formData.append('layout_type', currentState.selectedLayout);
+
         const response = await fetch(`${API_BASE}/generate-report`, {
             method: 'POST',
             body: formData
         });
 
-        if (!response.ok) throw new Error('Rapor oluşturma hatası');
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error('İndirme hatası');
+        }
 
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'MTM_Yonetici_Ozeti_Raporu.xlsx';
+        a.download = `MTM_Yonetici_Ozeti_${currentState.selectedLayout}.xlsx`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
-        a.remove();
+        document.body.removeChild(a);
 
-        showToast('Rapor başarıyla oluşturuldu ve indirildi');
+        showToast('Rapor başarıyla indirildi!', 'success');
 
-        // Reset after success?
-        currentState.reportFiles = [];
-        renderSelectedFiles();
     } catch (error) {
-        showToast('Rapor oluşturulurken hata oluştu', 'error');
+        console.error('Download error:', error);
+        showToast(`İndirme hatası: ${error.message}`, 'error');
     } finally {
-        btn.innerHTML = originalContent;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }
     }
-}
+};
 
 // ============================================
 // Generic Helpers
@@ -589,7 +765,10 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput.addEventListener('change', (e) => window.handleReportFiles(e.target.files));
     }
 
-    document.getElementById('generate-report-btn').addEventListener('click', generateReport);
+    const previewBtn = document.getElementById('preview-report-btn');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', window.previewReport);
+    }
 
     const uploadZone = document.getElementById('report-upload-zone');
     if (uploadZone) {

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="index.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -195,9 +196,83 @@
                 </div>
 
                 <div class="report-actions" id="report-actions" style="display: none;">
-                    <button id="generate-report-btn" class="btn btn-primary btn-large" style="width: 100%;">
-                        <i class="fas fa-magic"></i> Raporu Oluştur ve İndir
+                    <button id="preview-report-btn" class="btn btn-primary btn-large" style="width: 100%;">
+                        <i class="fas fa-eye"></i> Raporu Önizle
                     </button>
+                </div>
+
+                <!-- Report Preview Section (Hidden by default) -->
+                <div id="report-preview-section" class="report-preview-section" style="display: none;">
+                    <div class="section-title">
+                        <h3><i class="fas fa-palette"></i> Tasarım Seçimi</h3>
+                    </div>
+
+                    <div class="layout-selector">
+                        <div class="layout-option active" id="layout-standard"
+                            onclick="window.selectReportLayout('standard')">
+                            <div class="layout-thumbnail standard">
+                                <div class="th-header"></div>
+                                <div class="th-body"></div>
+                            </div>
+                            <span>Standart (Yeşil)</span>
+                        </div>
+                        <div class="layout-option" id="layout-modern" onclick="window.selectReportLayout('modern')">
+                            <div class="layout-thumbnail modern">
+                                <div class="th-header"></div>
+                                <div class="th-body"></div>
+                            </div>
+                            <span>Modern (Mavi)</span>
+                        </div>
+                    </div>
+
+                    <div class="section-title">
+                        <h3><i class="fas fa-chart-pie"></i> Önizleme</h3>
+                    </div>
+
+                    <div class="preview-stats">
+                        <!-- Summary Table -->
+                        <div class="preview-table-container">
+                            <table id="preview-summary-table" class="preview-table">
+                                <thead>
+                                    <tr>
+                                        <th>Mecra</th>
+                                        <th>Haber Adedi</th>
+                                        <th>Erişim</th>
+                                        <th>Reklam Eşdeğeri (TL)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Rows will be populated here -->
+                                </tbody>
+                                <tfoot>
+                                    <!-- Totals row -->
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <!-- Charts Grid -->
+                        <div class="preview-charts-grid">
+                            <div class="chart-card">
+                                <h4>Haber Adedi</h4>
+                                <canvas id="chart-haber"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <h4>Erişim</h4>
+                                <canvas id="chart-erisim"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <h4>Reklam Eşdeğeri</h4>
+                                <canvas id="chart-reklam"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="preview-actions">
+                        <button class="btn btn-secondary" onclick="window.resetReportView()">İptal</button>
+                        <button class="btn btn-primary" onclick="window.downloadFinalReport()">
+                            <i class="fas fa-download"></i> Seçili Tasarımı İndir
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
