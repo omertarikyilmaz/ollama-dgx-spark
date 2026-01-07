@@ -386,9 +386,72 @@ Yanıtı sadece belirtilen JSON formatında ver."""
 
 # ============== Link Analysis Service ==============
 
+async def fetch_hypestat_data(domain: str) -> dict:
+    """Fetch traffic data from Hypestat.com"""
+    hypestat_url = f"https://hypestat.com/info/{domain}"
+    traffic_data = {
+        "monthly_visitors": None,
+        "daily_visitors": None,
+        "daily_pageviews": None,
+        "global_rank": None
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http_client:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            response = await http_client.get(hypestat_url, headers=headers)
+            if response.status_code != 200:
+                return traffic_data
+            
+            soup = BeautifulSoup(response.text, "lxml")
+            page_text = soup.get_text(separator=" ", strip=True)
+            
+            # Extract monthly visitors using regex
+            import re
+            
+            # Pattern: "X.XM monthly visitors" or "approximately X.XM visitors"
+            monthly_match = re.search(r'(\d+\.?\d*[KMB]?)\s*monthly\s*visitors?', page_text, re.IGNORECASE)
+            if monthly_match:
+                traffic_data["monthly_visitors"] = monthly_match.group(1)
+            
+            # Alternative pattern: "about X.XM monthly"
+            if not traffic_data["monthly_visitors"]:
+                alt_match = re.search(r'about\s+(\d+\.?\d*[KMB])\s+monthly', page_text, re.IGNORECASE)
+                if alt_match:
+                    traffic_data["monthly_visitors"] = alt_match.group(1)
+            
+            # Daily visitors pattern
+            daily_match = re.search(r'(\d+\.?\d*[KMB]?)\s*(?:daily\s*)?visitors?\s*(?:per\s*day|daily)', page_text, re.IGNORECASE)
+            if daily_match:
+                traffic_data["daily_visitors"] = daily_match.group(1)
+            
+            # Alternative: "receives approximately X visitors"
+            if not traffic_data["daily_visitors"]:
+                alt_daily = re.search(r'receives\s+(?:approximately\s+)?(\d+\.?\d*[KMB])\s+visitors', page_text, re.IGNORECASE)
+                if alt_daily:
+                    traffic_data["daily_visitors"] = alt_daily.group(1)
+            
+            # Pageviews pattern
+            pv_match = re.search(r'(\d[\d,\.]*)\s*(?:page\s*)?(?:impressions|pageviews|views)\s*per\s*day', page_text, re.IGNORECASE)
+            if pv_match:
+                traffic_data["daily_pageviews"] = pv_match.group(1).replace(",", "")
+            
+            # Global rank / HypeRank
+            rank_match = re.search(r'(?:HypeRank|Global\s*Rank)[:\s#]*(\d[\d,]*)', page_text, re.IGNORECASE)
+            if rank_match:
+                traffic_data["global_rank"] = "#" + rank_match.group(1).replace(",", "")
+                
+    except Exception as e:
+        print(f"Hypestat fetch error for {domain}: {e}")
+    
+    return traffic_data
+
+
 @app.post("/analyze-link", response_model=LinkAnalysisResponse)
 async def analyze_link(request: LinkAnalysisRequest):
-    """Analyze a URL to extract publication metadata using AI"""
+    """Analyze a URL to extract publication metadata using AI + Hypestat traffic data"""
     url = request.url
     
     # Validate and parse URL
@@ -431,6 +494,9 @@ async def analyze_link(request: LinkAnalysisRequest):
     for script in soup(["script", "style", "nav", "footer", "header"]):
         script.decompose()
     visible_text = soup.get_text(separator=" ", strip=True)[:2000]
+    
+    # Fetch Hypestat traffic data in parallel (background)
+    hypestat_data = await fetch_hypestat_data(domain)
     
     # Prepare prompt for LLM
     analysis_prompt = f"""Aşağıdaki web sitesini analiz et:
@@ -477,7 +543,10 @@ Bu yayını analiz edip aşağıdaki bilgileri çıkar:
             content_type=ai_result.get("content_type", "Aktüel"),
             city=ai_result.get("city") if ai_result.get("city") != "Genel" else None,
             scope=ai_result.get("scope", "Ulusal"),
-            monthly_visitors=None,  # Placeholder - requires external API
+            monthly_visitors=hypestat_data.get("monthly_visitors"),
+            daily_visitors=hypestat_data.get("daily_visitors"),
+            daily_pageviews=hypestat_data.get("daily_pageviews"),
+            global_rank=hypestat_data.get("global_rank"),
             confidence=ai_result.get("confidence", 0.85)
         )
         

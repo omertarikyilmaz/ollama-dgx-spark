@@ -890,10 +890,24 @@ function displayLinkAnalysisResult(result) {
                     <span class="label">Kapsam</span>
                     <span class="value">${result.scope}</span>
                 </div>
+                <hr style="border-color: var(--border); margin: 0.5rem 0;">
                 <div class="result-item">
                     <span class="label">Aylık Ziyaretçi</span>
-                    <span class="value">${result.monthly_visitors || 'Veri Yok'}</span>
+                    <span class="value" style="color: var(--accent-blue);">${result.monthly_visitors || 'Veri Yok'}</span>
                 </div>
+                <div class="result-item">
+                    <span class="label">Günlük Ziyaretçi</span>
+                    <span class="value">${result.daily_visitors || '-'}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Günlük Sayfa Gör.</span>
+                    <span class="value">${result.daily_pageviews || '-'}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Global Sıralama</span>
+                    <span class="value" style="color: var(--accent-purple);">${result.global_rank || '-'}</span>
+                </div>
+                <hr style="border-color: var(--border); margin: 0.5rem 0;">
                 <div class="result-item">
                     <span class="label">Güven Skoru</span>
                     <div class="confidence-bar"><div class="confidence-fill" style="width: ${(result.confidence * 100).toFixed(0)}%;"></div></div>

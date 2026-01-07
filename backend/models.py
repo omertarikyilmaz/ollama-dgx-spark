@@ -114,5 +114,9 @@ class LinkAnalysisResponse(BaseModel):
     content_type: str = Field(..., description="Aktüel, Spor, Ekonomi, Magazin, Teknoloji, Sağlık, Kültür-Sanat")
     city: Optional[str] = Field(None, description="Yayının odaklandığı şehir veya null")
     scope: str = Field(..., description="Lokal, Bölgesel, Ulusal, Uluslararası")
+    # Traffic data from Hypestat
     monthly_visitors: Optional[str] = Field(None, description="Tahmini aylık ziyaretçi sayısı")
+    daily_visitors: Optional[str] = Field(None, description="Günlük ziyaretçi sayısı")
+    daily_pageviews: Optional[str] = Field(None, description="Günlük sayfa görüntüleme")
+    global_rank: Optional[str] = Field(None, description="Global sıralama (HypeRank)")
     confidence: float
