@@ -533,7 +533,7 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
             for col_num, value in enumerate(summary.columns.values):
                 summary_sheet.write(0, col_num, value, header_format)
             
-            # ... Charts logic ...
+            # Charts logic
             data_rows = len(summary) - 1
             
             # Helper for charts
@@ -549,14 +549,16 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
                 chart.set_style(chart_style)
                 summary_sheet.insert_chart(pos_cell, chart, {'x_scale': 0.9, 'y_scale': 0.9})
 
-            add_pie_chart(1, 'HABER ADEDİ DAĞILIM YÜZDESİ', 'A7')
+            # Move charts down to Row 10 (A10) to avoid overlapping with summary table rows
+            # Spaced out horizontally: A(0), H(7), Q(16)
+            add_pie_chart(1, 'HABER ADEDİ DAĞILIM YÜZDESİ', 'A10')
             
             col_map = {col: i for i, col in enumerate(summary.columns)}
             if 'Erişim' in col_map:
-                add_pie_chart(col_map['Erişim'], 'ERİŞİM DAĞILIM YÜZDESİ', 'F7')
+                add_pie_chart(col_map['Erişim'], 'ERİŞİM DAĞILIM YÜZDESİ', 'H10')
             
             if 'Reklam Eşdeğeri(TL)' in col_map:
-                add_pie_chart(col_map['Reklam Eşdeğeri(TL)'], 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ', 'K7')
+                add_pie_chart(col_map['Reklam Eşdeğeri(TL)'], 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ', 'Q10')
 
         output.seek(0)
         return StreamingResponse(
