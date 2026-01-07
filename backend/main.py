@@ -10,6 +10,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends, For
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
 import io
 import pandas as pd
 
