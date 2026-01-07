@@ -35,6 +35,7 @@ import langid
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import httpx
+import re
 
 
 # Data storage paths
@@ -409,8 +410,6 @@ async def fetch_hypestat_data(domain: str) -> dict:
             page_text = soup.get_text(separator=" ", strip=True)
             
             # Extract monthly visitors using regex
-            import re
-            
             # Pattern: "X.XM monthly visitors" or "approximately X.XM visitors"
             monthly_match = re.search(r'(\d+\.?\d*[KMB]?)\s*monthly\s*visitors?', page_text, re.IGNORECASE)
             if monthly_match:
