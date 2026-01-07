@@ -181,97 +181,108 @@
             </div>
 
             <div class="report-container">
-                <div class="upload-zone" id="report-upload-zone">
-                    <i class="fas fa-cloud-upload-alt"></i>
-                    <h3>Excel Dosyalarını Seçin veya Sürükleyin</h3>
-                    <p>Yüklemek istediğiniz EB, GB veya YB dosyalarını buraya ekleyin (Birden fazla seçilebilir)</p>
-                    <input type="file" id="report-file-input" multiple accept=".xlsx, .xls" hidden>
-                    <button class="btn btn-primary" onclick="document.getElementById('report-file-input').click()">
-                        <i class="fas fa-file-excel"></i> Dosya Seç
-                    </button>
-                </div>
-
-                <div id="selected-files-list" class="selected-files-list">
-                    <!-- Selected files will be listed here -->
-                </div>
-
-                <div class="report-actions" id="report-actions" style="display: none;">
-                    <button id="preview-report-btn" class="btn btn-primary btn-large" style="width: 100%;">
-                        <i class="fas fa-eye"></i> Raporu Önizle
-                    </button>
-                </div>
-
-                <!-- Report Preview Section (Hidden by default) -->
-                <div id="report-preview-section" class="report-preview-section" style="display: none;">
-                    <div class="section-title">
-                        <h3><i class="fas fa-palette"></i> Tasarım Seçimi</h3>
+                <!-- Left Sidebar: Controls -->
+                <div class="report-sidebar">
+                    <!-- Upload Zone -->
+                    <div class="upload-zone compact" id="report-upload-zone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <h3>Dosyaları Seçin</h3>
+                        <p class="small-text">EB, GB veya YB dosyaları</p>
+                        <input type="file" id="report-file-input" multiple accept=".xlsx, .xls" hidden>
+                        <button class="btn btn-outline-primary btn-sm"
+                            onclick="document.getElementById('report-file-input').click()">
+                            <i class="fas fa-plus"></i> Dosya Ekle
+                        </button>
                     </div>
 
-                    <div class="layout-selector">
-                        <div class="layout-option active" id="layout-standard"
-                            onclick="window.selectReportLayout('standard')">
-                            <div class="layout-thumbnail standard">
-                                <div class="th-header"></div>
-                                <div class="th-body"></div>
+                    <!-- File List -->
+                    <div id="selected-files-list" class="selected-files-list compact">
+                        <!-- Selected files -->
+                    </div>
+
+                    <!-- Layout Selector (Always visible or visible when files added) -->
+                    <div id="layout-selector-container" style="display: none; margin-top: 1.5rem;">
+                        <h4 class="sidebar-heading">Tasarım Seçimi</h4>
+                        <div class="layout-selector vertical">
+                            <div class="layout-option active" id="layout-standard"
+                                onclick="window.selectReportLayout('standard')">
+                                <div class="layout-thumbnail standard small"></div>
+                                <div class="layout-info">
+                                    <span class="l-name">Standart</span>
+                                    <span class="l-desc">Yeşil Temalı</span>
+                                </div>
                             </div>
-                            <span>Standart (Yeşil)</span>
-                        </div>
-                        <div class="layout-option" id="layout-modern" onclick="window.selectReportLayout('modern')">
-                            <div class="layout-thumbnail modern">
-                                <div class="th-header"></div>
-                                <div class="th-body"></div>
+                            <div class="layout-option" id="layout-modern" onclick="window.selectReportLayout('modern')">
+                                <div class="layout-thumbnail modern small"></div>
+                                <div class="layout-info">
+                                    <span class="l-name">Modern</span>
+                                    <span class="l-desc">Mavi Temalı</span>
+                                </div>
                             </div>
-                            <span>Modern (Mavi)</span>
                         </div>
                     </div>
 
-                    <div class="section-title">
-                        <h3><i class="fas fa-chart-pie"></i> Önizleme</h3>
+                    <!-- Actions -->
+                    <div class="report-actions" id="report-actions" style="display: none; margin-top: 1.5rem;">
+                        <button id="preview-report-btn" class="btn btn-primary"
+                            style="width: 100%; margin-bottom: 0.5rem;">
+                            <i class="fas fa-eye"></i> Önizle
+                        </button>
+                        <button id="download-report-btn" class="btn btn-success" style="width: 100%; display: none;"
+                            onclick="window.downloadFinalReport()">
+                            <i class="fas fa-download"></i> İndir
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Preview -->
+                <div class="report-main-content">
+                    <div id="report-placeholder" class="report-placeholder">
+                        <i class="fas fa-chart-pie"></i>
+                        <p>Önizleme görmek için dosya yükleyip "Önizle" butonuna basın.</p>
                     </div>
 
-                    <div class="preview-stats">
+                    <div id="report-preview-section" class="report-preview-section" style="display: none;">
+                        <div class="preview-header">
+                            <h3>Rapor Önizlemesi</h3>
+                            <button class="btn-icon" onclick="window.resetReportView()" title="Kapat"><i
+                                    class="fas fa-times"></i></button>
+                        </div>
+
                         <!-- Summary Table -->
-                        <div class="preview-table-container">
-                            <table id="preview-summary-table" class="preview-table">
-                                <thead>
-                                    <tr>
-                                        <th>Mecra</th>
-                                        <th>Haber Adedi</th>
-                                        <th>Erişim</th>
-                                        <th>Reklam Eşdeğeri (TL)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Rows will be populated here -->
-                                </tbody>
-                                <tfoot>
-                                    <!-- Totals row -->
-                                </tfoot>
-                            </table>
+                        <div class="preview-card">
+                            <h4>Özet Tablosu</h4>
+                            <div class="preview-table-container">
+                                <table id="preview-summary-table" class="preview-table compact">
+                                    <thead>
+                                        <tr>
+                                            <th>Mecra</th>
+                                            <th>Haber</th>
+                                            <th>Erişim</th>
+                                            <th>R.Eşdeğeri</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                    <tfoot></tfoot>
+                                </table>
+                            </div>
                         </div>
 
                         <!-- Charts Grid -->
-                        <div class="preview-charts-grid">
-                            <div class="chart-card">
-                                <h4>Haber Adedi</h4>
-                                <canvas id="chart-haber"></canvas>
+                        <div class="preview-charts-grid compact-grid">
+                            <div class="chart-card small">
+                                <h5>Haber Adedi</h5>
+                                <div class="canvas-wrapper"><canvas id="chart-haber"></canvas></div>
                             </div>
-                            <div class="chart-card">
-                                <h4>Erişim</h4>
-                                <canvas id="chart-erisim"></canvas>
+                            <div class="chart-card small">
+                                <h5>Erişim</h5>
+                                <div class="canvas-wrapper"><canvas id="chart-erisim"></canvas></div>
                             </div>
-                            <div class="chart-card">
-                                <h4>Reklam Eşdeğeri</h4>
-                                <canvas id="chart-reklam"></canvas>
+                            <div class="chart-card small">
+                                <h5>Reklam Eş.</h5>
+                                <div class="canvas-wrapper"><canvas id="chart-reklam"></canvas></div>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="preview-actions">
-                        <button class="btn btn-secondary" onclick="window.resetReportView()">İptal</button>
-                        <button class="btn btn-primary" onclick="window.downloadFinalReport()">
-                            <i class="fas fa-download"></i> Seçili Tasarımı İndir
-                        </button>
                     </div>
                 </div>
             </div>
