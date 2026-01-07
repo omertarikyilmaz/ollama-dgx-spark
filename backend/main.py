@@ -382,127 +382,107 @@ Yanıtı sadece belirtilen JSON formatında ver."""
 @app.post("/generate-report")
 async def generate_report(files: List[UploadFile] = File(...)):
     """Merge multiple Excel files and generate a summary report with charts."""
-    if not files:
-        raise HTTPException(status_code=400, detail="Dosya yüklenmedi")
+    try:
+        if not files:
+            raise HTTPException(status_code=400, detail="Dosya yüklenmedi")
 
-    all_dfs = []
-    for file in files:
-        content = await file.read()
-        try:
-            # Try reading the excel file (supports .xlsx and .xls)
-            df = pd.read_excel(io.BytesIO(content))
-            all_dfs.append(df)
-        except Exception as e:
-            print(f"Error reading {file.filename}: {e}")
-            continue
+        all_dfs = []
+        for file in files:
+            content = await file.read()
+            try:
+                df = pd.read_excel(io.BytesIO(content))
+                all_dfs.append(df)
+            except Exception as e:
+                print(f"Error reading {file.filename}: {e}")
+                continue
 
-    if not all_dfs:
-        raise HTTPException(status_code=400, detail="Geçerli bir Excel dosyası okunamadı")
+        if not all_dfs:
+            raise HTTPException(status_code=400, detail="Geçerli bir Excel dosyası okunamadı")
 
-    # Merge all dataframes
-    merged_df = pd.concat(all_dfs, ignore_index=True)
+        # Merge all dataframes
+        merged_df = pd.concat(all_dfs, ignore_index=True)
 
-    # Mecra mapping logic
-    def map_mecra(val):
-        if pd.isna(val): return "Diğer"
-        val_str = str(val).strip()
-        if "Elektronik Basın" in val_str: return "İnternet"
-        if "Görsel Basın" in val_str: return "TV"
-        if "Yazılı Basın" in val_str: return "Yazılı Basın"
-        return val_str
+        # Mecra mapping logic
+        def map_mecra(val):
+            if pd.isna(val): return "Diğer"
+            val_str = str(val).strip()
+            if "Elektronik Basın" in val_str: return "İnternet"
+            if "Görsel Basın" in val_str: return "TV"
+            if "Yazılı Basın" in val_str: return "Yazılı Basın"
+            return val_str
 
-    if 'Mecra' in merged_df.columns:
-        merged_df['Mecra_Grup'] = merged_df['Mecra'].apply(map_mecra)
-    else:
-        merged_df['Mecra_Grup'] = "Diğer"
+        if 'Mecra' in merged_df.columns:
+            merged_df['Mecra_Grup'] = merged_df['Mecra'].apply(map_mecra)
+        else:
+            merged_df['Mecra_Grup'] = "Diğer"
 
-    # Columns to handle
-    # 'Haber Adedi' is derived from row count
-    # 'Erişim' and 'Re.Eş. (TRY)' should be numeric
-    num_cols = {
-        'Erişim': 'Erişim',
-        'Re.Eş. (TRY)': 'Reklam Eşdeğeri(TL)'
-    }
-    
-    for col in num_cols.keys():
-        if col in merged_df.columns:
-            merged_df[col] = pd.to_numeric(merged_df[col], errors='coerce').fillna(0)
+        # Convert numeric columns
+        if 'Erişim' in merged_df.columns:
+            merged_df['Erişim'] = pd.to_numeric(merged_df['Erişim'], errors='coerce').fillna(0)
+        if 'Re.Eş. (TRY)' in merged_df.columns:
+            merged_df['Re.Eş. (TRY)'] = pd.to_numeric(merged_df['Re.Eş. (TRY)'], errors='coerce').fillna(0)
 
-    # Grouping
-    agg_dict = {'Mecra_Grup': 'size'}
-    for col in num_cols.keys():
-        if col in merged_df.columns:
-            agg_dict[col] = 'sum'
+        # Build summary
+        summary = merged_df.groupby('Mecra_Grup').size().reset_index(name='Haber Adedi')
+        summary.rename(columns={'Mecra_Grup': 'Mecra'}, inplace=True)
+        
+        if 'Erişim' in merged_df.columns:
+            erisim_sum = merged_df.groupby('Mecra_Grup')['Erişim'].sum().reset_index(name='Erişim')
+            summary = summary.merge(erisim_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
             
-    summary = merged_df.groupby('Mecra_Grup').agg(agg_dict).reset_index()
-    
-    # Rename for summary sheet
-    summary_rename = {'Mecra_Grup': 'Mecra', 'Mecra_Grup': 'Mecra', 'size': 'Haber Adedi'}
-    if 'Erişim' in summary.columns: summary_rename['Erişim'] = 'Erişim'
-    if 'Re.Eş. (TRY)' in summary.columns: summary_rename['Re.Eş. (TRY)'] = 'Reklam Eşdeğeri(TL)'
-    
-    # Actually, aggregate manually to be safe with naming
-    summary = merged_df.groupby('Mecra_Grup').size().reset_index(name='Haber Adedi')
-    summary.rename(columns={'Mecra_Grup': 'Mecra'}, inplace=True)
-    
-    if 'Erişim' in merged_df.columns:
-        erisim_sum = merged_df.groupby('Mecra_Grup')['Erişim'].sum().reset_index(name='Erişim')
-        summary = summary.merge(erisim_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
-        
-    if 'Re.Eş. (TRY)' in merged_df.columns:
-        re_sum = merged_df.groupby('Mecra_Grup')['Re.Eş. (TRY)'].sum().reset_index(name='Reklam Eşdeğeri(TL)')
-        summary = summary.merge(re_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
+        if 'Re.Eş. (TRY)' in merged_df.columns:
+            re_sum = merged_df.groupby('Mecra_Grup')['Re.Eş. (TRY)'].sum().reset_index(name='Reklam Eşdeğeri(TL)')
+            summary = summary.merge(re_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
 
-    # Add Totals Row
-    numeric_cols = summary.select_dtypes(include=['number']).columns
-    totals = summary[numeric_cols].sum()
-    totals_df = pd.DataFrame([['Toplam'] + totals.tolist()], columns=['Mecra'] + numeric_cols.tolist())
-    summary = pd.concat([summary, totals_df], ignore_index=True)
+        # Add Totals Row
+        numeric_cols = summary.select_dtypes(include=['number']).columns
+        totals = summary[numeric_cols].sum()
+        totals_df = pd.DataFrame([['Toplam'] + totals.tolist()], columns=['Mecra'] + numeric_cols.tolist())
+        summary = pd.concat([summary, totals_df], ignore_index=True)
 
-    # Create the Excel file
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Sheet 1: Raw Data
-        merged_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
-        
-        # Sheet 2: Executive Summary
-        summary.to_excel(writer, sheet_name='Yönetici Özeti', index=False)
-        
-        workbook = writer.book
-        summary_sheet = writer.sheets['Yönetici Özeti']
-        
-        # Add basic formatting
-        header_format = workbook.add_format({'bold': True, 'bg_color': '#2C3E50', 'font_color': 'white', 'border': 1})
-        for col_num, value in enumerate(summary.columns.values):
-            summary_sheet.write(0, col_num, value, header_format)
+        # Create the Excel file
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            merged_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
+            summary.to_excel(writer, sheet_name='Yönetici Özeti', index=False)
             
-        # Add Charts to Summary Sheet
-        # 1. Haber Adedi Column Chart
-        chart1 = workbook.add_chart({'type': 'column'})
-        chart1.add_series({
-            'name':       'Haber Adedi',
-            'categories': ['Yönetici Özeti', 1, 0, len(summary)-2, 0],
-            'values':     ['Yönetici Özeti', 1, 1, len(summary)-2, 1],
-            'data_labels': {'value': True},
-        })
-        chart1.set_title({'name': 'Mecralara Göre Haber Dağılımı'})
-        summary_sheet.insert_chart('F2', chart1)
-        
-        # 2. Reklam Eşdeğeri Pie Chart
-        if 'Reklam Eşdeğeri(TL)' in summary.columns:
-            chart2 = workbook.add_chart({'type': 'pie'})
-            chart2.add_series({
-                'name':       'Reklam Eşdeğeri',
+            workbook = writer.book
+            summary_sheet = writer.sheets['Yönetici Özeti']
+            
+            header_format = workbook.add_format({'bold': True, 'bg_color': '#2C3E50', 'font_color': 'white', 'border': 1})
+            for col_num, value in enumerate(summary.columns.values):
+                summary_sheet.write(0, col_num, value, header_format)
+                
+            # Chart 1: Haber Adedi
+            chart1 = workbook.add_chart({'type': 'column'})
+            chart1.add_series({
+                'name': 'Haber Adedi',
                 'categories': ['Yönetici Özeti', 1, 0, len(summary)-2, 0],
-                'values':     ['Yönetici Özeti', 1, 3, len(summary)-2, 3],
-                'data_labels': {'percentage': True},
+                'values': ['Yönetici Özeti', 1, 1, len(summary)-2, 1],
+                'data_labels': {'value': True},
             })
-            chart2.set_title({'name': 'Reklam Eşdeğeri (TL) Dağılımı'})
-            summary_sheet.insert_chart('F18', chart2)
+            chart1.set_title({'name': 'Mecralara Göre Haber Dağılımı'})
+            summary_sheet.insert_chart('F2', chart1)
+            
+            # Chart 2: Reklam Eşdeğeri
+            if 'Reklam Eşdeğeri(TL)' in summary.columns:
+                chart2 = workbook.add_chart({'type': 'pie'})
+                chart2.add_series({
+                    'name': 'Reklam Eşdeğeri',
+                    'categories': ['Yönetici Özeti', 1, 0, len(summary)-2, 0],
+                    'values': ['Yönetici Özeti', 1, 3, len(summary)-2, 3],
+                    'data_labels': {'percentage': True},
+                })
+                chart2.set_title({'name': 'Reklam Eşdeğeri (TL) Dağılımı'})
+                summary_sheet.insert_chart('F18', chart2)
 
-    output.seek(0)
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=MTM_Yonetici_Ozeti.xlsx"}
-    )
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=MTM_Yonetici_Ozeti.xlsx"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rapor oluşturulurken hata: {str(e)}")

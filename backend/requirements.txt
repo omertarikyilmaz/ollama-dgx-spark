@@ -7,3 +7,4 @@ langid==1.1.6
 pandas
 openpyxl
 xlsxwriter
+xlrd
