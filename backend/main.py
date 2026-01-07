@@ -549,16 +549,16 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
                 chart.set_style(chart_style)
                 summary_sheet.insert_chart(pos_cell, chart, {'x_scale': scale, 'y_scale': scale})
 
-            # Charts at Row 10 (A10, I10, Q10) for compact but safe layout
-            # A->I is 8 cols, I->Q is 8 cols. This prevents overlap for 0.75 scaled charts.
+            # Charts at Row 10 (A10, E10, L10) as specifically requested by user
+            # User request: Erişim -> E, Reklam -> L
             add_pie_chart(1, 'HABER ADEDİ DAĞILIM YÜZDESİ', 'A10')
             
             col_map = {col: i for i, col in enumerate(summary.columns)}
             if 'Erişim' in col_map:
-                add_pie_chart(col_map['Erişim'], 'ERİŞİM DAĞILIM YÜZDESİ', 'I10')
+                add_pie_chart(col_map['Erişim'], 'ERİŞİM DAĞILIM YÜZDESİ', 'E10')
             
             if 'Reklam Eşdeğeri(TL)' in col_map:
-                add_pie_chart(col_map['Reklam Eşdeğeri(TL)'], 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ', 'Q10')
+                add_pie_chart(col_map['Reklam Eşdeğeri(TL)'], 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ', 'L10')
 
         output.seek(0)
         return StreamingResponse(
