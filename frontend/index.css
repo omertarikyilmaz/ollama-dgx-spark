@@ -677,119 +677,274 @@ header {
    Report Generator View
    ============================================ */
 
+/* ============================================
+   Report Generator View (Urgent Compact)
+   ============================================ */
+
 .report-container {
-    max-width: 800px;
-    margin: 0 auto;
-    width: 100%;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    /* Fixed Sidebar + Content */
+    gap: 1.5rem;
+    height: calc(100vh - 120px);
+    overflow: hidden;
+    padding: 0 1rem 1rem 1rem;
+}
+
+/* --- Left Sidebar --- */
+.report-sidebar {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.5rem;
+    height: 100%;
+    overflow-y: auto;
 }
 
-.upload-zone {
-    background: var(--bg-glass);
-    border: 2px dashed var(--border);
-    border-radius: var(--radius-lg);
-    padding: 4rem 2rem;
-    text-align: center;
-    transition: var(--transition);
+.sidebar-section {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    cursor: pointer;
+    gap: 0.5rem;
 }
 
-.upload-zone:hover,
-.upload-zone.dragover {
-    border-color: var(--accent-blue);
-    background: rgba(59, 130, 246, 0.05);
-}
-
-.upload-zone i {
-    font-size: 4rem;
-    color: var(--accent-blue);
-    margin-bottom: 1rem;
-}
-
-.upload-zone h3 {
-    font-size: 1.5rem;
+.sidebar-heading {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 4px;
     margin-bottom: 0.5rem;
 }
 
-.upload-zone p {
-    color: var(--text-muted);
+/* Upload & Files */
+.upload-zone.compact {
+    padding: 1rem;
+    min-height: auto;
+    background: var(--bg-tertiary);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: all 0.2s;
 }
 
-.selected-files-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+.upload-zone.compact:hover {
+    border-color: var(--accent-blue);
+}
+
+.upload-zone.compact i {
+    font-size: 1.25rem;
+    color: var(--accent-blue);
+    margin: 0;
+}
+
+.upload-zone.compact p {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.overlay-btn {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.selected-files-list.compact {
+    max-height: 150px;
+    overflow-y: auto;
 }
 
 .file-item {
-    background: var(--bg-secondary);
+    padding: 0.5rem;
+    font-size: 0.8rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1rem 1.5rem;
+    margin-bottom: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    animation: fadeIn 0.3s ease-out;
-}
-
-.file-info {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.file-info i {
-    color: #22c55e;
-    font-size: 1.25rem;
 }
 
 .file-name {
-    font-weight: 600;
-    font-size: 0.95rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
 }
 
-.remove-file {
-    color: var(--text-muted);
+/* Vertical Layout Selector */
+.layout-selector-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.layout-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid transparent;
+    border-radius: 6px;
     cursor: pointer;
-    transition: 0.2s;
+    transition: all 0.1s;
 }
 
-.remove-file:hover {
-    color: var(--danger);
+.layout-option:hover {
+    background: rgba(255, 255, 255, 0.05);
 }
 
-/* ============================================
-   Traditional News Classification (Legacy Template System)
-   ============================================ */
-
-.news-layout {
-    display: grid;
-    grid-template-columns: 280px 1fr 340px;
-    gap: 1.5rem;
+.layout-option.active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: var(--accent-blue);
 }
 
-.panel {
-    background: var(--bg-glass);
+.layout-option .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: block;
+}
+
+.dot.standard {
+    background: #D7E4BC;
+    box-shadow: 0 0 5px #D7E4BC;
+}
+
+.dot.modern {
+    background: #4A90E2;
+    box-shadow: 0 0 5px #4A90E2;
+}
+
+.layout-option .label {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* Buttons */
+.btn-block {
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+.btn-text {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+}
+
+.btn-text:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+/* --- Right Panel (Preview) --- */
+.report-preview-panel {
+    background: var(--bg-tertiary);
+    /* Distinct background for separation */
+    border-radius: var(--radius-md);
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 1.5rem;
+    padding: 1rem;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
 }
 
-.panel-title {
-    font-size: 0.875rem;
+.report-placeholder {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.3;
+}
+
+.report-preview-content {
+    animation: fadeIn 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 800px;
+    /* Limit width even if screen is huge */
+}
+
+.preview-box {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.box-header {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.box-header h5 {
+    margin: 0;
+    font-size: 0.75rem;
     font-weight: 700;
-    color: var(--text-secondary);
-    margin-bottom: 1.5rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+/* ULTRA COMPACT TABLE */
+.table-mini {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    /* Very small */
+}
+
+.table-mini th {
+    background: rgba(0, 0, 0, 0.2);
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: 6px;
+    text-align: left;
+}
+
+.table-mini td {
+    border-top: 1px solid var(--border);
+    padding: 6px;
+}
+
+.table-mini tfoot {
+    background: rgba(0, 0, 0, 0.2);
+    font-weight: 700;
+    color: var(--accent-blue);
+}
+
+.text-right {
+    text-align: right;
+}
+
+/* Mini Charts */
+.charts-mini-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 10px;
+}
+
+.mini-chart {
+    height: 140px;
+    /* Fixed small height */
+    position: relative;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
 }
 
 /* Utilities */

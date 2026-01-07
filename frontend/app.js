@@ -441,26 +441,35 @@ window.removeReportFile = function (index) {
 
 function renderSelectedFiles() {
     const list = document.getElementById('selected-files-list');
-    const actions = document.getElementById('report-actions');
+    const actionsPanel = document.getElementById('report-actions-panel');
+    const layoutPanel = document.getElementById('layout-control-panel');
 
     if (!list) return;
 
     if (currentState.reportFiles.length === 0) {
         list.innerHTML = '';
-        if (actions) actions.style.display = 'none';
+        if (actionsPanel) actionsPanel.style.display = 'none';
+        if (layoutPanel) layoutPanel.style.display = 'none';
         return;
     }
 
-    if (actions) actions.style.display = 'block';
+    // Show controls when files exist
+    if (layoutPanel) layoutPanel.style.display = 'flex';
+    if (actionsPanel) {
+        actionsPanel.style.display = 'flex';
+        // Ensure download section is hidden if we are just adding files
+        if (!currentState.reportPreviewData) {
+            const dlSection = document.getElementById('download-section');
+            if (dlSection) dlSection.style.display = 'none';
+            const prevBtn = document.getElementById('preview-report-btn');
+            if (prevBtn) prevBtn.style.display = 'block';
+        }
+    }
+
     list.innerHTML = currentState.reportFiles.map((file, index) => `
         <div class="file-item">
-            <div class="file-info">
-                <i class="fas fa-file-excel" style="color: #10b981;"></i>
-                <span class="file-name">${file.name}</span>
-            </div>
-            <div class="remove-file" onclick="removeReportFile(${index})">
-                <i class="fas fa-times"></i>
-            </div>
+            <span class="file-name" title="${file.name}">${file.name.length > 20 ? file.name.substring(0, 18) + '...' : file.name}</span>
+            <div class="remove-file" onclick="removeReportFile(${index})"><i class="fas fa-times"></i></div>
         </div>
     `).join('');
 }
@@ -473,18 +482,15 @@ window.selectReportLayout = function (layout) {
 };
 
 window.resetReportView = function () {
-    const previewSection = document.getElementById('report-preview-section');
-    if (previewSection) previewSection.style.display = 'none';
+    // Right Panel: Show Placeholder, Hide Preview
+    document.getElementById('report-preview-content').style.display = 'none';
+    document.getElementById('report-placeholder').style.display = 'flex';
 
-    const uploadZone = document.getElementById('report-upload-zone');
-    if (uploadZone) uploadZone.style.display = 'flex';
+    // Sidebar: Hide Download Section, Show Preview Button
+    document.getElementById('download-section').style.display = 'none';
+    document.getElementById('preview-report-btn').style.display = 'block';
 
-    const list = document.getElementById('selected-files-list');
-    if (list) list.style.display = 'block';
-
-    const actions = document.getElementById('report-actions');
-    if (actions) actions.style.display = 'block';
-
+    // Clear charts
     if (currentState.charts) {
         Object.values(currentState.charts).forEach(chart => {
             if (chart && typeof chart.destroy === 'function') chart.destroy();
@@ -493,7 +499,8 @@ window.resetReportView = function () {
     currentState.charts = {};
     currentState.reportPreviewData = null;
 
-    renderSelectedFiles(); // Re-render logic to ensure correct state
+    // We keep files and selection
+    renderSelectedFiles();
 };
 
 window.previewReport = async function () {
@@ -518,7 +525,7 @@ window.previewReport = async function () {
         const result = await apiCall('/preview-report', {
             method: 'POST',
             body: formData,
-            headers: {} // Browser sets boundary
+            headers: {}
         });
 
         if (result.success) {
@@ -540,20 +547,15 @@ window.previewReport = async function () {
 };
 
 function showPreviewUI() {
-    const uploadZone = document.getElementById('report-upload-zone');
-    if (uploadZone) uploadZone.style.display = 'none';
+    // Right Panel: Hide Placeholder, Show Preview
+    document.getElementById('report-placeholder').style.display = 'none';
+    document.getElementById('report-preview-content').style.display = 'block';
 
-    const list = document.getElementById('selected-files-list');
-    if (list) list.style.display = 'none';
-
-    const actions = document.getElementById('report-actions');
-    if (actions) actions.style.display = 'none';
-
-    const previewSection = document.getElementById('report-preview-section');
-    if (previewSection) previewSection.style.display = 'block';
+    // Sidebar: Show Download Section, Hide Preview Button (or keep it as "Update")
+    document.getElementById('preview-report-btn').style.display = 'none';
+    document.getElementById('download-section').style.display = 'block';
 
     renderPreviewTable();
-    // Small delay to ensure DOM is ready for charts
     setTimeout(renderPreviewCharts, 100);
 }
 
@@ -567,9 +569,9 @@ function renderPreviewTable() {
     tbody.innerHTML = data.summary_table.map(row => `
         <tr>
             <td>${row.Mecra || ''}</td>
-            <td>${row['Haber Adedi'] || 0}</td>
-            <td>${(row['Erişim'] || 0).toLocaleString('tr-TR')}</td>
-            <td>${(row['Reklam Eşdeğeri(TL)'] || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })}</td>
+            <td class="text-right">${row['Haber Adedi'] || 0}</td>
+            <td class="text-right">${(row['Erişim'] || 0).toLocaleString('tr-TR')}</td>
+            <td class="text-right">${(row['Reklam Eşdeğeri(TL)'] || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</td>
         </tr>
     `).join('');
 
@@ -578,9 +580,9 @@ function renderPreviewTable() {
         tfoot.innerHTML = `
             <tr>
                 <td>${totals.Mecra}</td>
-                <td>${totals['Haber Adedi']}</td>
-                <td>${(totals['Erişim'] || 0).toLocaleString('tr-TR')}</td>
-                <td>${(totals['Reklam Eşdeğeri(TL)'] || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })}</td>
+                <td class="text-right">${totals['Haber Adedi']}</td>
+                <td class="text-right">${(totals['Erişim'] || 0).toLocaleString('tr-TR')}</td>
+                <td class="text-right">${(totals['Reklam Eşdeğeri(TL)'] || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} TL</td>
             </tr>
         `;
     }
