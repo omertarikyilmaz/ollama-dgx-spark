@@ -536,13 +536,20 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
             # Charts logic
             data_rows = len(summary) - 1
             
-            # Move charts to Row 10 with adjusted spacing and size to prevent overlap
-            # Reduced scale (0.75) to fit 3 charts in one row
-            # Positions: A10, G10, M10 (Gap of 6 columns)
-            
-            def add_chart_at(col_idx, title, pos_cell):
-                add_pie_chart(col_idx, title, pos_cell, scale=0.75)
+            # Helper for charts
+            def add_pie_chart(col_idx, title, pos_cell, scale=0.75):
+                chart = workbook.add_chart({'type': 'pie'})
+                chart.add_series({
+                    'name': title,
+                    'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
+                    'values': ['Yönetici Özeti', 1, col_idx, data_rows, col_idx],
+                    'data_labels': {'percentage': True, 'category': False},
+                })
+                chart.set_title({'name': title})
+                chart.set_style(chart_style)
+                summary_sheet.insert_chart(pos_cell, chart, {'x_scale': scale, 'y_scale': scale})
 
+            # Charts at Row 10 (A10, G10, M10) for compact but safe layout
             add_pie_chart(1, 'HABER ADEDİ DAĞILIM YÜZDESİ', 'A10')
             
             col_map = {col: i for i, col in enumerate(summary.columns)}
