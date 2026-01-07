@@ -17,8 +17,12 @@
             <div class="brand" onclick="navigateTo('home')">
                 <div class="brand-logo">⚡</div>
                 <div class="brand-title">
-                    <h1>MİNNAL AI ADMİN</h1>
-                    <p>Medya Takip Merkezi API Servisleri</p>
+                    <div style="display: flex; flex-direction: column;">
+                        <h1 style="line-height: 1;">MİNNAL AI ADMİN</h1>
+                        <span
+                            style="font-size: 0.75rem; color: var(--accent-blue); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px;">MEDYA
+                            TAKİP MERKEZİ</span>
+                    </div>
                 </div>
             </div>
             <div class="system-status">
@@ -71,18 +75,35 @@
                 <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
                 <div class="view-title">
                     <h2>💬 AI Sohbet</h2>
-                    <p>Profesyonel AI asistanı ile doğrudan iletişim</p>
+                    <p>Oturum bazlı gelişmiş asistan deneyimi</p>
                 </div>
             </div>
 
-            <div class="chat-container">
-                <div id="chat-messages" class="chat-messages">
-                    <div class="message ai">Merhaba! Ben MTM AI asistanıyım. Size nasıl yardımcı olabilirim?</div>
-                </div>
-                <div class="chat-input-area">
-                    <input type="text" id="chat-input" class="chat-input" placeholder="Bir mesaj yazın..."
-                        autocomplete="off">
-                    <button id="chat-send-btn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+            <div class="chat-wrapper">
+                <!-- Chat Sidebar -->
+                <aside class="chat-sidebar">
+                    <button class="new-chat-btn" onclick="window.createNewChatSession()">
+                        <i class="fas fa-plus"></i> Yeni Sohbet
+                    </button>
+                    <div class="chat-history-list" id="chat-session-list">
+                        <!-- Sessions will be listed here -->
+                    </div>
+                </aside>
+
+                <!-- Chat Main -->
+                <div class="chat-container">
+                    <div id="chat-messages" class="chat-messages">
+                        <div class="chat-welcome" id="chat-welcome-screen">
+                            <div class="welcome-icon">⚡</div>
+                            <h3>MİNNAL AI</h3>
+                            <p>Size nasıl yardımcı olabilirim?</p>
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chat-input" class="chat-input" placeholder="Bir mesaj yazın..."
+                            autocomplete="off">
+                        <button id="chat-send-btn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+                    </div>
                 </div>
             </div>
         </div>

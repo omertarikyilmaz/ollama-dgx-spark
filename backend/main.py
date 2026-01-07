@@ -271,7 +271,7 @@ async def chat(request: ChatRequest):
         result = await client.generate(
             model=request.model,
             prompt=full_prompt,
-            system_prompt="Sen Medya Takip Merkezi (MTM) için çalışan profesyonel ve yardımsever bir yapay zeka asistanısın. Kısa, öz ve doğru yanıtlar ver.",
+            system_prompt="Sen MİNNAL AI ADMİN yardımcısısın. Medya Takip Merkezi (MTM) platformu içerisinde genel bir AI asistanı olarak görev yapıyorsun. Kullanıcıyla normal bir sohbet kur, her şeyi bir haber merkezi formatında analiz etmeye zorlama. Yardımsever, zeki ve özgün yanıtlar ver.",
             json_schema={"response": {"type": "string", "description": "The assistant's response"}},
             keep_alive="10m"
         )

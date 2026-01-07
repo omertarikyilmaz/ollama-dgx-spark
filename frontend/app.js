@@ -10,12 +10,25 @@ let currentState = {
     page: 'home',
     templates: [],
     selectedTemplateId: null,
-    chatHistory: [],
+    chatSessions: [], // { id, title, history, timestamp }
+    activeSessionId: null,
     analysisResults: {
         language: null,
         sector: null
     }
 };
+
+// Initial state load
+function initChatState() {
+    const saved = localStorage.getItem('minnal_chat_sessions');
+    if (saved) {
+        currentState.chatSessions = JSON.parse(saved);
+        if (currentState.chatSessions.length > 0) {
+            currentState.activeSessionId = currentState.chatSessions[0].id;
+        }
+    }
+}
+initChatState();
 
 // ============================================
 // Core Navigation (SPA)
@@ -38,6 +51,11 @@ window.navigateTo = function (pageId) {
         loadTemplates();
     }
 
+    if (pageId === 'chat') {
+        renderChatSessions();
+        renderActiveSessionMessages();
+    }
+
     // Scroll to top
     window.scrollTo(0, 0);
 };
@@ -52,44 +70,129 @@ window.switchNewsTab = function (tab) {
 };
 
 // ============================================
-// AI Chat Service
+// AI Chat Service (Professional Sessions)
 // ============================================
+
+window.createNewChatSession = function () {
+    const newSession = {
+        id: Date.now().toString(),
+        title: 'Yeni Sohbet',
+        history: [],
+        timestamp: new Date().toISOString()
+    };
+    currentState.chatSessions.unshift(newSession);
+    currentState.activeSessionId = newSession.id;
+    saveSessionsToStorage();
+    renderChatSessions();
+    renderActiveSessionMessages();
+};
+
+function saveSessionsToStorage() {
+    localStorage.setItem('minnal_chat_sessions', JSON.stringify(currentState.chatSessions));
+}
+
+function renderChatSessions() {
+    const list = document.getElementById('chat-session-list');
+    if (!list) return;
+
+    list.innerHTML = currentState.chatSessions.map(s => `
+        <div class="session-item ${s.id === currentState.activeSessionId ? 'active' : ''}" onclick="switchChatSession('${s.id}')">
+            <div class="session-name">${s.title}</div>
+            <div class="delete-session" onclick="event.stopPropagation(); deleteChatSession('${s.id}')">
+                <i class="fas fa-trash-alt"></i>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.switchChatSession = function (id) {
+    currentState.activeSessionId = id;
+    renderChatSessions();
+    renderActiveSessionMessages();
+};
+
+window.deleteChatSession = function (id) {
+    currentState.chatSessions = currentState.chatSessions.filter(s => s.id !== id);
+    if (currentState.activeSessionId === id) {
+        currentState.activeSessionId = currentState.chatSessions.length > 0 ? currentState.chatSessions[0].id : null;
+    }
+    saveSessionsToStorage();
+    renderChatSessions();
+    renderActiveSessionMessages();
+};
+
+function renderActiveSessionMessages() {
+    const container = document.getElementById('chat-messages');
+    const welcome = document.getElementById('chat-welcome-screen');
+
+    container.innerHTML = '';
+    if (welcome) container.appendChild(welcome);
+
+    const activeSession = currentState.chatSessions.find(s => s.id === currentState.activeSessionId);
+
+    if (activeSession && activeSession.history.length > 0) {
+        if (welcome) welcome.style.display = 'none';
+        activeSession.history.forEach(msg => appendMessageUI(msg.role, msg.content));
+    } else {
+        if (welcome) welcome.style.display = 'flex';
+    }
+}
 
 async function sendChatMessage() {
     const input = document.getElementById('chat-input');
     const message = input.value.trim();
     if (!message) return;
 
+    // Check if we have an active session, if not create one
+    if (!currentState.activeSessionId) {
+        window.createNewChatSession();
+    }
+
+    const activeSession = currentState.chatSessions.find(s => s.id === currentState.activeSessionId);
+
+    // Auto-update title if it's the first message
+    if (activeSession.history.length === 0) {
+        activeSession.title = message.substring(0, 30) + (message.length > 30 ? '...' : '');
+        renderChatSessions();
+    }
+
     // Clear input
     input.value = '';
 
+    // Add User Message to State
+    activeSession.history.push({ role: 'user', content: message });
+    saveSessionsToStorage();
+
     // Add User Message to UI
-    appendMessage('user', message);
+    if (document.getElementById('chat-welcome-screen')) {
+        document.getElementById('chat-welcome-screen').style.display = 'none';
+    }
+    appendMessageUI('user', message);
 
     try {
         const response = await apiCall('/chat', {
             method: 'POST',
             body: JSON.stringify({
                 message: message,
-                history: currentState.chatHistory
+                history: activeSession.history.slice(0, -1) // Send history excluding recent msg if prompt wants context
             })
         });
 
-        // Add to history state
-        currentState.chatHistory.push({ role: 'user', content: message });
-        currentState.chatHistory.push({ role: 'assistant', content: response.response });
+        // Add AI Message to state
+        activeSession.history.push({ role: 'assistant', content: response.response });
+        saveSessionsToStorage();
 
         // Add AI Message to UI
-        appendMessage('ai', response.response);
+        appendMessageUI('ai', response.response);
     } catch (error) {
         showToast('Chat hatası: ' + error.message, 'error');
     }
 }
 
-function appendMessage(role, text) {
+function appendMessageUI(role, text) {
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');
-    msgDiv.className = `message ${role}`;
+    msgDiv.className = `message ${role === 'user' ? 'user' : 'ai'}`;
     msgDiv.textContent = text;
     container.appendChild(msgDiv);
 
