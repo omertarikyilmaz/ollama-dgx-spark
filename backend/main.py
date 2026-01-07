@@ -401,6 +401,10 @@ async def generate_report(files: List[UploadFile] = File(...)):
 
         # Merge all dataframes
         merged_df = pd.concat(all_dfs, ignore_index=True)
+        
+        # Filter out rows with NaN Mecra (summary rows in source files)
+        if 'Mecra' in merged_df.columns:
+            merged_df = merged_df.dropna(subset=['Mecra'])
 
         # Mecra mapping logic
         def map_mecra(val):
@@ -422,7 +426,7 @@ async def generate_report(files: List[UploadFile] = File(...)):
         if 'Re.Eş. (TRY)' in merged_df.columns:
             merged_df['Re.Eş. (TRY)'] = pd.to_numeric(merged_df['Re.Eş. (TRY)'], errors='coerce').fillna(0)
 
-        # Build summary
+        # Build summary - order: Yazılı Basın, İnternet, TV
         summary = merged_df.groupby('Mecra_Grup').size().reset_index(name='Haber Adedi')
         summary.rename(columns={'Mecra_Grup': 'Mecra'}, inplace=True)
         
@@ -434,47 +438,73 @@ async def generate_report(files: List[UploadFile] = File(...)):
             re_sum = merged_df.groupby('Mecra_Grup')['Re.Eş. (TRY)'].sum().reset_index(name='Reklam Eşdeğeri(TL)')
             summary = summary.merge(re_sum.rename(columns={'Mecra_Grup': 'Mecra'}), on='Mecra')
 
+        # Sort by custom order: Yazılı Basın, İnternet, TV
+        order = {'Yazılı Basın': 0, 'İnternet': 1, 'TV': 2}
+        summary['sort_order'] = summary['Mecra'].map(order).fillna(99)
+        summary = summary.sort_values('sort_order').drop(columns=['sort_order']).reset_index(drop=True)
+
         # Add Totals Row
-        numeric_cols = summary.select_dtypes(include=['number']).columns
+        numeric_cols = summary.select_dtypes(include=['number']).columns.tolist()
         totals = summary[numeric_cols].sum()
-        totals_df = pd.DataFrame([['Toplam'] + totals.tolist()], columns=['Mecra'] + numeric_cols.tolist())
-        summary = pd.concat([summary, totals_df], ignore_index=True)
+        totals_row = {'Mecra': 'Toplam'}
+        for col in numeric_cols:
+            totals_row[col] = totals[col]
+        summary = pd.concat([summary, pd.DataFrame([totals_row])], ignore_index=True)
 
         # Create the Excel file
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             merged_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
-            summary.to_excel(writer, sheet_name='Yönetici Özeti', index=False)
+            summary.to_excel(writer, sheet_name='Yönetici Özeti', index=False, startrow=0, startcol=0)
             
             workbook = writer.book
             summary_sheet = writer.sheets['Yönetici Özeti']
             
-            header_format = workbook.add_format({'bold': True, 'bg_color': '#2C3E50', 'font_color': 'white', 'border': 1})
+            # Format header
+            header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
             for col_num, value in enumerate(summary.columns.values):
                 summary_sheet.write(0, col_num, value, header_format)
-                
-            # Chart 1: Haber Adedi
-            chart1 = workbook.add_chart({'type': 'column'})
+            
+            # Number of data rows (excluding Toplam)
+            data_rows = len(summary) - 1
+            
+            # PIE CHART 1: Haber Adedi Dağılım Yüzdesi
+            chart1 = workbook.add_chart({'type': 'pie'})
             chart1.add_series({
                 'name': 'Haber Adedi',
-                'categories': ['Yönetici Özeti', 1, 0, len(summary)-2, 0],
-                'values': ['Yönetici Özeti', 1, 1, len(summary)-2, 1],
-                'data_labels': {'value': True},
+                'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],  # Mecra column
+                'values': ['Yönetici Özeti', 1, 1, data_rows, 1],      # Haber Adedi column
+                'data_labels': {'percentage': True, 'category': False},
             })
-            chart1.set_title({'name': 'Mecralara Göre Haber Dağılımı'})
-            summary_sheet.insert_chart('F2', chart1)
+            chart1.set_title({'name': 'HABER ADEDİ DAĞILIM YÜZDESİ'})
+            chart1.set_style(10)
+            summary_sheet.insert_chart('A8', chart1, {'x_scale': 0.8, 'y_scale': 0.8})
             
-            # Chart 2: Reklam Eşdeğeri
-            if 'Reklam Eşdeğeri(TL)' in summary.columns:
+            # PIE CHART 2: Erişim Dağılım Yüzdesi
+            if 'Erişim' in summary.columns:
                 chart2 = workbook.add_chart({'type': 'pie'})
                 chart2.add_series({
-                    'name': 'Reklam Eşdeğeri',
-                    'categories': ['Yönetici Özeti', 1, 0, len(summary)-2, 0],
-                    'values': ['Yönetici Özeti', 1, 3, len(summary)-2, 3],
-                    'data_labels': {'percentage': True},
+                    'name': 'Erişim',
+                    'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
+                    'values': ['Yönetici Özeti', 1, 2, data_rows, 2],
+                    'data_labels': {'percentage': True, 'category': False},
                 })
-                chart2.set_title({'name': 'Reklam Eşdeğeri (TL) Dağılımı'})
-                summary_sheet.insert_chart('F18', chart2)
+                chart2.set_title({'name': 'ERİŞİM DAĞILIM YÜZDESİ'})
+                chart2.set_style(10)
+                summary_sheet.insert_chart('F8', chart2, {'x_scale': 0.8, 'y_scale': 0.8})
+            
+            # PIE CHART 3: Reklam Eşdeğeri Dağılım Yüzdesi
+            if 'Reklam Eşdeğeri(TL)' in summary.columns:
+                chart3 = workbook.add_chart({'type': 'pie'})
+                chart3.add_series({
+                    'name': 'Reklam Eşdeğeri',
+                    'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
+                    'values': ['Yönetici Özeti', 1, 3, data_rows, 3],
+                    'data_labels': {'percentage': True, 'category': False},
+                })
+                chart3.set_title({'name': 'REKLAM EŞDEĞERİ (TL) DAĞILIM YÜZDESİ'})
+                chart3.set_style(10)
+                summary_sheet.insert_chart('K8', chart3, {'x_scale': 0.8, 'y_scale': 0.8})
 
         output.seek(0)
         return StreamingResponse(
