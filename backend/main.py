@@ -26,10 +26,15 @@ from models import (
     LanguageDetectResponse,
     SectorClassifyRequest,
     SectorClassifyResponse,
-    ChatMessage
+    ChatMessage,
+    LinkAnalysisRequest,
+    LinkAnalysisResponse
 )
 from services.ollama_client import get_ollama_client, OllamaClient
 import langid
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+import httpx
 
 
 # Data storage paths
@@ -377,6 +382,169 @@ Yanıtı sadece belirtilen JSON formatında ver."""
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============== Link Analysis Service ==============
+
+@app.post("/analyze-link", response_model=LinkAnalysisResponse)
+async def analyze_link(request: LinkAnalysisRequest):
+    """Analyze a URL to extract publication metadata using AI"""
+    url = request.url
+    
+    # Validate and parse URL
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            url = "https://" + url
+            parsed = urlparse(url)
+        domain = parsed.netloc.replace("www.", "")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Geçersiz URL formatı")
+    
+    # Fetch page content
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as http_client:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            response = await http_client.get(url, headers=headers)
+            response.raise_for_status()
+            html_content = response.text
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=400, detail=f"Sayfa yüklenemedi: HTTP {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Sayfa yüklenemedi: {str(e)}")
+    
+    # Parse HTML
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Extract title
+    title = soup.title.string.strip() if soup.title and soup.title.string else domain
+    
+    # Extract meta description
+    meta_desc = ""
+    meta_tag = soup.find("meta", attrs={"name": "description"})
+    if meta_tag and meta_tag.get("content"):
+        meta_desc = meta_tag["content"]
+    
+    # Extract visible text (first 2000 chars for efficiency)
+    for script in soup(["script", "style", "nav", "footer", "header"]):
+        script.decompose()
+    visible_text = soup.get_text(separator=" ", strip=True)[:2000]
+    
+    # Prepare prompt for LLM
+    analysis_prompt = f"""Aşağıdaki web sitesini analiz et:
+
+URL: {url}
+Domain: {domain}
+Başlık: {title}
+Meta Açıklama: {meta_desc}
+Sayfa İçeriği (özet): {visible_text[:1500]}
+
+Bu yayını analiz edip aşağıdaki bilgileri çıkar:
+1. Yayının dili
+2. İçerik türü (Aktüel/Genel Haber, Spor, Ekonomi, Magazin, Teknoloji, Sağlık, Kültür-Sanat, Politika)
+3. Odaklandığı şehir (varsa, yoksa null)
+4. Kapsam (Lokal, Bölgesel, Ulusal, Uluslararası)
+"""
+
+    json_schema = {
+        "language": {"type": "string", "description": "Yayının dili (Türkçe, İngilizce, vs.)"},
+        "content_type": {"type": "string", "description": "Ana içerik türü"},
+        "city": {"type": "string", "description": "Yayının odaklandığı şehir veya 'Genel'"},
+        "scope": {"type": "string", "description": "Kapsam: Lokal, Bölgesel, Ulusal, Uluslararası"},
+        "confidence": {"type": "number", "description": "Analiz güven skoru 0-1"}
+    }
+    
+    client = get_ollama_client()
+    
+    try:
+        result = await client.generate(
+            model="qwen2.5:32b-instruct-q4_K_M",
+            prompt=analysis_prompt,
+            system_prompt="Sen bir medya analiz uzmanısın. Verilen web sitesi bilgilerini analiz edip yayın hakkında bilgi çıkar. Yanıtı sadece belirtilen JSON formatında ver.",
+            json_schema=json_schema,
+            keep_alive="5m"
+        )
+        
+        ai_result = result["result"]
+        
+        return LinkAnalysisResponse(
+            url=url,
+            domain=domain,
+            title=title,
+            language=ai_result.get("language", "Türkçe"),
+            content_type=ai_result.get("content_type", "Aktüel"),
+            city=ai_result.get("city") if ai_result.get("city") != "Genel" else None,
+            scope=ai_result.get("scope", "Ulusal"),
+            monthly_visitors=None,  # Placeholder - requires external API
+            confidence=ai_result.get("confidence", 0.85)
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analizi başarısız: {str(e)}")
+
+
+class LinkAnalysisExportRequest(BaseModel):
+    analyses: List[dict]
+
+
+@app.post("/export-link-analysis")
+async def export_link_analysis(request: LinkAnalysisExportRequest):
+    """Export link analysis results to Excel"""
+    if not request.analyses:
+        raise HTTPException(status_code=400, detail="Dışa aktarılacak veri yok")
+    
+    # Prepare DataFrame
+    df = pd.DataFrame(request.analyses)
+    
+    # Reorder and rename columns for Turkish output
+    column_map = {
+        'domain': 'Domain',
+        'title': 'Başlık',
+        'language': 'Dil',
+        'content_type': 'İçerik Türü',
+        'city': 'Şehir',
+        'scope': 'Kapsam',
+        'monthly_visitors': 'Aylık Ziyaretçi',
+        'confidence': 'Güven Skoru',
+        'url': 'URL'
+    }
+    
+    # Select and rename columns
+    export_cols = ['domain', 'title', 'language', 'content_type', 'city', 'scope', 'monthly_visitors', 'confidence', 'url']
+    export_df = df[[col for col in export_cols if col in df.columns]].copy()
+    export_df.rename(columns=column_map, inplace=True)
+    
+    # Create Excel
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        export_df.to_excel(writer, sheet_name='Yayın Analizi', index=False)
+        
+        workbook = writer.book
+        worksheet = writer.sheets['Yayın Analizi']
+        
+        # Auto-adjust column widths
+        for i, col in enumerate(export_df.columns):
+            max_len = max(export_df[col].astype(str).map(len).max(), len(col)) + 2
+            worksheet.set_column(i, i, min(max_len, 50))
+        
+        # Header format
+        header_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#f59e0b',
+            'font_color': 'white',
+            'border': 1
+        })
+        for col_num, value in enumerate(export_df.columns.values):
+            worksheet.write(0, col_num, value, header_format)
+    
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=yayin_analizi.xlsx"}
+    )
 
 
 

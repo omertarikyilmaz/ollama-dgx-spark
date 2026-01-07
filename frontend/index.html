@@ -75,6 +75,13 @@
                     <p>Birden fazla Excel dosyasını birleştirip yönetici özeti ve grafikler içeren raporlar hazırlayın.
                     </p>
                 </div>
+
+                <!-- Yayın Analizi -->
+                <div class="service-card" onclick="navigateTo('link-analysis')">
+                    <div class="service-icon" style="color: #f59e0b;"><i class="fas fa-link"></i></div>
+                    <h3>Yayın Analizi</h3>
+                    <p>Haber sitesi linklerini analiz ederek dil, içerik türü, kapsam ve trafik bilgilerini çıkarın.</p>
+                </div>
             </div>
         </main>
 
@@ -280,7 +287,57 @@
             </div>
         </div>
 
-        <!-- 6. News (Templates) View - Legacy compatible -->
+        <!-- 6. Link Analysis View -->
+        <div id="view-link-analysis" class="service-view">
+            <div class="view-header">
+                <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
+                <div class="view-title">
+                    <h2>🔗 Yayın Analizi</h2>
+                    <p>Haber sitesi URL'lerini analiz edin</p>
+                </div>
+            </div>
+
+            <div class="analysis-layout">
+                <div class="analysis-input-panel">
+                    <div class="input-group" style="margin-bottom: 1rem;">
+                        <label
+                            style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; display: block;">Site
+                            URL'si</label>
+                        <input type="url" id="link-url-input" class="form-input"
+                            placeholder="https://www.hurriyet.com.tr"
+                            style="width: 100%; padding: 1rem; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); color: #fff; font-size: 1rem;">
+                    </div>
+                    <button id="analyze-link-btn" class="btn btn-primary btn-large" style="width: 100%;">
+                        <i class="fas fa-search"></i> Analiz Et
+                    </button>
+
+                    <!-- Analysis History -->
+                    <div id="link-analysis-history" style="margin-top: 1.5rem;">
+                        <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Analiz Geçmişi
+                        </h4>
+                        <div id="link-history-list" class="selected-files-list compact">
+                            <!-- Filled by JS -->
+                        </div>
+                        <button id="export-link-analysis-btn" class="btn btn-secondary"
+                            style="width: 100%; margin-top: 0.5rem; display: none;">
+                            <i class="fas fa-file-excel"></i> Excel İndir
+                        </button>
+                    </div>
+                </div>
+
+                <div class="analysis-result-panel" id="link-result-panel">
+                    <div class="result-placeholder" id="link-result-placeholder">
+                        <i class="fas fa-link"></i>
+                        <p>Henüz analiz yapılmadı.<br>Bir URL girerek başlayın.</p>
+                    </div>
+                    <div id="link-result-content" style="display: none;">
+                        <!-- Result card will be inserted by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. News (Templates) View - Legacy compatible -->
         <div id="view-news" class="service-view">
             <div class="view-header">
                 <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>

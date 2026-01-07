@@ -98,3 +98,21 @@ class SectorClassifyResponse(BaseModel):
     importance_level: int = Field(..., ge=1, le=5, description="1: Kritik, 2: Çok Önemli, 3: Önemli, 4: Orta, 5: Düşük")
     importance_reasoning: str = Field(..., description="Önem seviyesinin atanma gerekçesi")
     confidence: float
+
+
+# ============== Link Analysis Models ==============
+
+class LinkAnalysisRequest(BaseModel):
+    url: str = Field(..., description="URL to analyze")
+
+
+class LinkAnalysisResponse(BaseModel):
+    url: str
+    domain: str
+    title: Optional[str] = None
+    language: str
+    content_type: str = Field(..., description="Aktüel, Spor, Ekonomi, Magazin, Teknoloji, Sağlık, Kültür-Sanat")
+    city: Optional[str] = Field(None, description="Yayının odaklandığı şehir veya null")
+    scope: str = Field(..., description="Lokal, Bölgesel, Ulusal, Uluslararası")
+    monthly_visitors: Optional[str] = Field(None, description="Tahmini aylık ziyaretçi sayısı")
+    confidence: float

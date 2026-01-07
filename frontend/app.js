@@ -19,7 +19,8 @@ let currentState = {
     reportFiles: [], // Array of File objects for report generator
     reportPreviewData: null,
     selectedLayout: 'standard', // 'standard' or 'modern'
-    charts: {} // Store Chart.js instances
+    charts: {}, // Store Chart.js instances
+    linkAnalysisHistory: [] // Array of link analysis results
 };
 
 // Initial state load
@@ -785,4 +786,181 @@ document.addEventListener('DOMContentLoaded', () => {
             window.handleReportFiles(e.dataTransfer.files);
         });
     }
+
+    // Link Analysis
+    const analyzeLinkBtn = document.getElementById('analyze-link-btn');
+    if (analyzeLinkBtn) {
+        analyzeLinkBtn.addEventListener('click', analyzeLink);
+    }
+    const linkInput = document.getElementById('link-url-input');
+    if (linkInput) {
+        linkInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') analyzeLink();
+        });
+    }
+    const exportLinkBtn = document.getElementById('export-link-analysis-btn');
+    if (exportLinkBtn) {
+        exportLinkBtn.addEventListener('click', exportLinkAnalysis);
+    }
 });
+
+// ============================================
+// Link Analysis Service
+// ============================================
+
+async function analyzeLink() {
+    const urlInput = document.getElementById('link-url-input');
+    const url = urlInput?.value.trim();
+
+    if (!url) {
+        showToast('Lütfen bir URL girin', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('analyze-link-btn');
+    const originalContent = btn?.innerHTML || '';
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analiz ediliyor...';
+        btn.disabled = true;
+    }
+
+    try {
+        const result = await apiCall('/analyze-link', {
+            method: 'POST',
+            body: JSON.stringify({ url })
+        });
+
+        // Add to history
+        currentState.linkAnalysisHistory.unshift(result);
+
+        // Display result
+        displayLinkAnalysisResult(result);
+        renderLinkAnalysisHistory();
+
+        // Show export button
+        const exportBtn = document.getElementById('export-link-analysis-btn');
+        if (exportBtn) exportBtn.style.display = 'block';
+
+        // Clear input
+        urlInput.value = '';
+
+        showToast('Analiz tamamlandı!', 'success');
+
+    } catch (error) {
+        console.error('Link analysis error:', error);
+        showToast(`Analiz hatası: ${error.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }
+    }
+}
+
+function displayLinkAnalysisResult(result) {
+    const placeholder = document.getElementById('link-result-placeholder');
+    const content = document.getElementById('link-result-content');
+
+    if (placeholder) placeholder.style.display = 'none';
+    if (content) {
+        content.style.display = 'block';
+        content.innerHTML = `
+            <div class="result-card" style="animation: fadeIn 0.3s ease;">
+                <div class="result-item">
+                    <span class="label">Domain</span>
+                    <span class="value">${result.domain}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Başlık</span>
+                    <span class="value" style="font-size: 1rem;">${result.title || '-'}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Dil</span>
+                    <span class="value">${result.language}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">İçerik Türü</span>
+                    <span class="value">${result.content_type}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Şehir</span>
+                    <span class="value">${result.city || 'Genel'}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Kapsam</span>
+                    <span class="value">${result.scope}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Aylık Ziyaretçi</span>
+                    <span class="value">${result.monthly_visitors || 'Veri Yok'}</span>
+                </div>
+                <div class="result-item">
+                    <span class="label">Güven Skoru</span>
+                    <div class="confidence-bar"><div class="confidence-fill" style="width: ${(result.confidence * 100).toFixed(0)}%;"></div></div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function renderLinkAnalysisHistory() {
+    const list = document.getElementById('link-history-list');
+    if (!list) return;
+
+    if (currentState.linkAnalysisHistory.length === 0) {
+        list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-muted);">Henüz analiz yok</p>';
+        return;
+    }
+
+    list.innerHTML = currentState.linkAnalysisHistory.slice(0, 10).map((item, idx) => `
+        <div class="file-item" style="cursor: pointer;" onclick="displayLinkAnalysisResult(currentState.linkAnalysisHistory[${idx}])">
+            <span class="file-name" title="${item.url}">${item.domain}</span>
+            <span style="font-size: 0.7rem; color: var(--text-muted);">${item.content_type}</span>
+        </div>
+    `).join('');
+}
+
+async function exportLinkAnalysis() {
+    if (currentState.linkAnalysisHistory.length === 0) {
+        showToast('Dışa aktarılacak veri yok', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('export-link-analysis-btn');
+    const originalContent = btn?.innerHTML || '';
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> İndiriliyor...';
+        btn.disabled = true;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/export-link-analysis`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ analyses: currentState.linkAnalysisHistory })
+        });
+
+        if (!response.ok) throw new Error('Export failed');
+
+        const blob = await response.blob();
+        const urlObj = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = urlObj;
+        a.download = 'yayin_analizi.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(urlObj);
+        document.body.removeChild(a);
+
+        showToast('Excel indirildi!', 'success');
+
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Excel indirme hatası', 'error');
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }
+    }
+}

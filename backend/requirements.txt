@@ -8,3 +8,5 @@ pandas
 openpyxl
 xlsxwriter
 xlrd
+beautifulsoup4
+lxml
