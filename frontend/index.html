@@ -66,6 +66,14 @@
                     <h3>Şirket Sınıflandırma</h3>
                     <p>Haberleri özel şablonlara göre şirket ve faaliyet alanı bazlı detaylı sınıflandırın.</p>
                 </div>
+
+                <!-- Rapor Oluşturucu -->
+                <div class="service-card" onclick="navigateTo('report')">
+                    <div class="service-icon" style="color: #22c55e;"><i class="fas fa-file-excel"></i></div>
+                    <h3>Rapor Oluşturucu</h3>
+                    <p>Birden fazla Excel dosyasını birleştirip yönetici özeti ve grafikler içeren raporlar hazırlayın.
+                    </p>
+                </div>
             </div>
         </main>
 
@@ -134,108 +142,118 @@
             </div>
         </div>
 
-        <!-- 4. Sector View -->
-        <div id="view-sector" class="service-view">
-            <div class="view-header">
-                <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
-                <div class="view-title">
-                    <h2>📊 Sektör Sınıflandırma</h2>
-                    <p>Haber metinlerini kategorilere ayırın</p>
-                </div>
-            </div>
+    </div>
+    </div>
+    </div>
 
-            <div class="analysis-layout">
-                <div class="analysis-input-panel">
-                    <textarea id="sector-text-input"
-                        placeholder="Sınıflandırılacak haberi buraya yapıştırın..."></textarea>
-                    <button id="sector-classify-btn" class="btn btn-primary btn-large" style="width: 100%;">
-                        <i class="fas fa-layer-group"></i> Sektörü Belirle
-                    </button>
-                </div>
-                <div class="analysis-result-panel" id="sector-result-panel">
-                    <div class="result-placeholder">
-                        <i class="fas fa-tags"></i>
-                        <p>Henüz analiz yapılmadı.<br>Haber metni girerek başlayın.</p>
-                    </div>
-                </div>
+    <!-- 5. Report Generator View -->
+    <div id="view-report" class="service-view">
+        <div class="view-header">
+            <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
+            <div class="view-title">
+                <h2>📊 Rapor Oluşturucu</h2>
+                <p>Excel dosyalarını birleştirin ve özet analiz raporu oluşturun</p>
             </div>
         </div>
 
-        <!-- 5. News (Templates) View - Legacy compatible -->
-        <div id="view-news" class="service-view">
-            <div class="view-header">
-                <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
-                <div class="view-title">
-                    <h2>📰 Şirket Bazlı Sınıflandırma</h2>
-                    <p>Özel şablonlar ile KV Cache destekli hızlı analiz</p>
-                </div>
+        <div class="report-container">
+            <div class="upload-zone" id="report-upload-zone">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <h3>Excel Dosyalarını Seçin veya Sürükleyin</h3>
+                <p>Yüklemek istediğiniz EB, GB veya YB dosyalarını buraya ekleyin (Birden fazla seçilebilir)</p>
+                <input type="file" id="report-file-input" multiple accept=".xlsx, .xls" hidden>
+                <button class="btn btn-primary" onclick="document.getElementById('report-file-input').click()">
+                    <i class="fas fa-file-excel"></i> Dosya Seç
+                </button>
             </div>
 
-            <div class="news-layout">
-                <!-- Templates Section -->
-                <aside class="panel">
-                    <div class="panel-title">Şablonlar</div>
-                    <button id="new-template-btn" class="btn btn-secondary" style="margin-bottom: 1rem; width: 100%;">+
-                        Yeni Şablon</button>
-                    <div id="templates-list" class="templates-list">
-                        <!-- Templates will be loaded here -->
-                    </div>
-                </aside>
+            <div id="selected-files-list" class="selected-files-list">
+                <!-- Selected files will be listed here -->
+            </div>
 
-                <!-- Classification Section -->
-                <section class="panel" style="gap: 1.5rem;">
-                    <div class="panel-title">Haber Analizi</div>
-                    <div id="selected-template-badge" class="chip"
-                        style="display: none; background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); align-self: flex-start;">
-                        Seçili Şablon: <span id="selected-template-name">...</span>
-                    </div>
-                    <textarea id="news-input"
-                        style="flex: 1; min-height: 200px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem; color: #fff; font-family: inherit; resize: none;"
-                        placeholder="Haberi buraya yapıştırın..."></textarea>
-                    <div style="display: flex; gap: 1rem;">
-                        <button id="classify-btn" class="btn btn-primary btn-large" style="flex: 1;" disabled>🚀
-                            Sınıflandır</button>
-                        <button id="clear-btn" class="btn btn-secondary">Temizle</button>
-                    </div>
-                    <div id="news-result-content"
-                        style="min-height: 150px; background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1.5rem; border: 1px solid var(--border);">
-                        <div class="result-placeholder">Sonuç burada görünecek...</div>
-                    </div>
-                </section>
-
-                <!-- Settings/Editor Section -->
-                <aside class="panel">
-                    <div class="panel-title">Ayarlar & Editör</div>
-                    <div class="panel-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                        <button class="tab-btn active" onclick="switchNewsTab('settings')">⚙️</button>
-                        <button class="tab-btn" onclick="switchNewsTab('editor')">✏️</button>
-                    </div>
-
-                    <div id="settings-tab" class="news-tab-content active">
-                        <!-- Standard Settings -->
-                        <div class="form-group" style="margin-bottom: 1rem;">
-                            <label>KV Cache Type</label>
-                            <select id="kv-cache-type"
-                                style="width: 100%; border-radius: 8px; background: var(--bg-tertiary); color: #fff; padding: 0.5rem;">
-                                <option value="q4_0">Q4_0 (Hızlı)</option>
-                                <option value="q8_0" selected>Q8_0 (Dengeli)</option>
-                                <option value="f16">F16 (Kaliteli)</option>
-                            </select>
-                        </div>
-                        <button id="save-settings-btn" class="btn btn-primary" style="width: 100%;">Ayarları
-                            Kaydet</button>
-                    </div>
-
-                    <div id="editor-tab" class="news-tab-content" style="display: none;">
-                        <div id="template-editor-form">
-                            <!-- Template editor fields... -->
-                            <p style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">Şablon
-                                düzenlemek için bir şablon seçin or 'Yeni' butonuna basın.</p>
-                        </div>
-                    </div>
-                </aside>
+            <div class="report-actions" id="report-actions" style="display: none;">
+                <button id="generate-report-btn" class="btn btn-primary btn-large" style="width: 100%;">
+                    <i class="fas fa-magic"></i> Raporu Oluştur ve İndir
+                </button>
             </div>
         </div>
+    </div>
+
+    <!-- 6. News (Templates) View - Legacy compatible -->
+    <div id="view-news" class="service-view">
+        <div class="view-header">
+            <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
+            <div class="view-title">
+                <h2>📰 Şirket Bazlı Sınıflandırma</h2>
+                <p>Özel şablonlar ile KV Cache destekli hızlı analiz</p>
+            </div>
+        </div>
+
+        <div class="news-layout">
+            <!-- Templates Section -->
+            <aside class="panel">
+                <div class="panel-title">Şablonlar</div>
+                <button id="new-template-btn" class="btn btn-secondary" style="margin-bottom: 1rem; width: 100%;">+
+                    Yeni Şablon</button>
+                <div id="templates-list" class="templates-list">
+                    <!-- Templates will be loaded here -->
+                </div>
+            </aside>
+
+            <!-- Classification Section -->
+            <section class="panel" style="gap: 1.5rem;">
+                <div class="panel-title">Haber Analizi</div>
+                <div id="selected-template-badge" class="chip"
+                    style="display: none; background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); align-self: flex-start;">
+                    Seçili Şablon: <span id="selected-template-name">...</span>
+                </div>
+                <textarea id="news-input"
+                    style="flex: 1; min-height: 200px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem; color: #fff; font-family: inherit; resize: none;"
+                    placeholder="Haberi buraya yapıştırın..."></textarea>
+                <div style="display: flex; gap: 1rem;">
+                    <button id="classify-btn" class="btn btn-primary btn-large" style="flex: 1;" disabled>🚀
+                        Sınıflandır</button>
+                    <button id="clear-btn" class="btn btn-secondary">Temizle</button>
+                </div>
+                <div id="news-result-content"
+                    style="min-height: 150px; background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1.5rem; border: 1px solid var(--border);">
+                    <div class="result-placeholder">Sonuç burada görünecek...</div>
+                </div>
+            </section>
+
+            <!-- Settings/Editor Section -->
+            <aside class="panel">
+                <div class="panel-title">Ayarlar & Editör</div>
+                <div class="panel-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                    <button class="tab-btn active" onclick="switchNewsTab('settings')">⚙️</button>
+                    <button class="tab-btn" onclick="switchNewsTab('editor')">✏️</button>
+                </div>
+
+                <div id="settings-tab" class="news-tab-content active">
+                    <!-- Standard Settings -->
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label>KV Cache Type</label>
+                        <select id="kv-cache-type"
+                            style="width: 100%; border-radius: 8px; background: var(--bg-tertiary); color: #fff; padding: 0.5rem;">
+                            <option value="q4_0">Q4_0 (Hızlı)</option>
+                            <option value="q8_0" selected>Q8_0 (Dengeli)</option>
+                            <option value="f16">F16 (Kaliteli)</option>
+                        </select>
+                    </div>
+                    <button id="save-settings-btn" class="btn btn-primary" style="width: 100%;">Ayarları
+                        Kaydet</button>
+                </div>
+
+                <div id="editor-tab" class="news-tab-content" style="display: none;">
+                    <div id="template-editor-form">
+                        <!-- Template editor fields... -->
+                        <p style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">Şablon
+                            düzenlemek için bir şablon seçin or 'Yeni' butonuna basın.</p>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
     </div>
 
     <!-- Toast Notifications -->

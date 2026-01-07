@@ -15,7 +15,8 @@ let currentState = {
     analysisResults: {
         language: null,
         sector: null
-    }
+    },
+    reportFiles: [] // Array of File objects for report generator
 };
 
 // Initial state load
@@ -417,6 +418,93 @@ function displayNewsResult(response) {
 }
 
 // ============================================
+// Report Generator Service
+// ============================================
+
+window.handleReportFiles = function (files) {
+    const newFiles = Array.from(files).filter(f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
+    currentState.reportFiles = [...currentState.reportFiles, ...newFiles];
+    renderSelectedFiles();
+};
+
+function renderSelectedFiles() {
+    const list = document.getElementById('selected-files-list');
+    const actions = document.getElementById('report-actions');
+    if (!list) return;
+
+    if (currentState.reportFiles.length === 0) {
+        list.innerHTML = '';
+        actions.style.display = 'none';
+        return;
+    }
+
+    actions.style.display = 'block';
+    list.innerHTML = currentState.reportFiles.map((file, index) => `
+        <div class="file-item">
+            <div class="file-info">
+                <i class="fas fa-file-excel"></i>
+                <span class="file-name">${file.name}</span>
+            </div>
+            <div class="remove-file" onclick="removeReportFile(${index})">
+                <i class="fas fa-times"></i>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.removeReportFile = function (index) {
+    currentState.reportFiles.splice(index, 1);
+    renderSelectedFiles();
+};
+
+async function generateReport() {
+    if (currentState.reportFiles.length === 0) {
+        showToast('Lütfen en az bir dosya seçin', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('generate-report-btn');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner"></span> Rapor Hazırlanıyor...';
+    btn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        currentState.reportFiles.forEach(file => {
+            formData.append('files', file);
+        });
+
+        const response = await fetch(`${API_BASE}/generate-report`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) throw new Error('Rapor oluşturma hatası');
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'MTM_Yonetici_Ozeti_Raporu.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+
+        showToast('Rapor başarıyla oluşturuldu ve indirildi');
+
+        // Reset after success?
+        currentState.reportFiles = [];
+        renderSelectedFiles();
+    } catch (error) {
+        showToast('Rapor oluşturulurken hata oluştu', 'error');
+    } finally {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    }
+}
+
+// ============================================
 // Generic Helpers
 // ============================================
 
@@ -494,4 +582,26 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('news-input').value = '';
         document.getElementById('news-result-content').innerHTML = '<div class="result-placeholder">Sonuç burada görünecek...</div>';
     });
+
+    // Report
+    const fileInput = document.getElementById('report-file-input');
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => window.handleReportFiles(e.target.files));
+    }
+
+    document.getElementById('generate-report-btn').addEventListener('click', generateReport);
+
+    const uploadZone = document.getElementById('report-upload-zone');
+    if (uploadZone) {
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            window.handleReportFiles(e.dataTransfer.files);
+        });
+    }
 });

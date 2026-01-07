@@ -674,6 +674,97 @@ header {
 }
 
 /* ============================================
+   Report Generator View
+   ============================================ */
+
+.report-container {
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.upload-zone {
+    background: var(--bg-glass);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 4rem 2rem;
+    text-align: center;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+}
+
+.upload-zone:hover,
+.upload-zone.dragover {
+    border-color: var(--accent-blue);
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.upload-zone i {
+    font-size: 4rem;
+    color: var(--accent-blue);
+    margin-bottom: 1rem;
+}
+
+.upload-zone h3 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.upload-zone p {
+    color: var(--text-muted);
+}
+
+.selected-files-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.file-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.file-info i {
+    color: #22c55e;
+    font-size: 1.25rem;
+}
+
+.file-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.remove-file {
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.remove-file:hover {
+    color: var(--danger);
+}
+
+/* ============================================
    Traditional News Classification (Legacy Template System)
    ============================================ */
 
