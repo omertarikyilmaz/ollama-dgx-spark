@@ -6,12 +6,18 @@ WORKDIR /app
 # Install system dependencies
 # - Tesseract OCR with Turkish language support
 # - FFmpeg for audio processing (Whisper)
+# - OpenFST for pynini/NeMo ASR
+# - Build tools for compiling native extensions
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-tur \
     tesseract-ocr-eng \
     ffmpeg \
     libsndfile1 \
+    libfst-dev \
+    libfst-tools \
+    build-essential \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
