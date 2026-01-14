@@ -32,7 +32,10 @@ from models import (
     LinkAnalysisResponse,
     NewspaperOCRResponse,
     OCRLine,
-    OCRWord
+    OCRWord,
+    WhisperTranscriptionResponse,
+    WhisperSegment,
+    WhisperModelInfo
 )
 from services.ollama_client import get_ollama_client, OllamaClient
 import langid
@@ -1032,5 +1035,174 @@ async def ocr_health():
             "languages": langs,
             "turkish_available": has_turkish
         }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ============== Whisper Speech-to-Text Service ==============
+
+# Global whisper model (lazy loaded)
+_whisper_model = None
+_whisper_model_name = None
+
+WHISPER_MODELS = [
+    WhisperModelInfo(name="tiny", size="39M", description="En hızlı, düşük doğruluk"),
+    WhisperModelInfo(name="base", size="74M", description="Hızlı, orta doğruluk"),
+    WhisperModelInfo(name="small", size="244M", description="Dengeli hız/doğruluk", recommended=True),
+    WhisperModelInfo(name="medium", size="769M", description="Yüksek doğruluk, orta hız"),
+    WhisperModelInfo(name="large-v3", size="1550M", description="En yüksek doğruluk, yavaş"),
+]
+
+
+def get_whisper_model(model_name: str = "small"):
+    """Lazy load Whisper model with GPU support"""
+    global _whisper_model, _whisper_model_name
+
+    if _whisper_model is None or _whisper_model_name != model_name:
+        from faster_whisper import WhisperModel
+
+        # Try CUDA first, fallback to CPU
+        try:
+            _whisper_model = WhisperModel(
+                model_name,
+                device="cuda",
+                compute_type="float16"  # Use float16 for GPU efficiency
+            )
+            print(f"Whisper model '{model_name}' loaded on CUDA (GPU)")
+        except Exception as e:
+            print(f"CUDA not available ({e}), falling back to CPU")
+            _whisper_model = WhisperModel(
+                model_name,
+                device="cpu",
+                compute_type="int8"  # Use int8 for CPU efficiency
+            )
+            print(f"Whisper model '{model_name}' loaded on CPU")
+
+        _whisper_model_name = model_name
+
+    return _whisper_model
+
+
+@app.get("/whisper-models")
+async def list_whisper_models():
+    """List available Whisper models"""
+    return {
+        "models": [m.model_dump() for m in WHISPER_MODELS],
+        "current_model": _whisper_model_name
+    }
+
+
+@app.post("/transcribe", response_model=WhisperTranscriptionResponse)
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    model: str = Form("small"),
+    language: str = Form(None),  # Auto-detect if None
+    task: str = Form("transcribe")  # "transcribe" or "translate" (to English)
+):
+    """
+    Transcribe audio file using faster-whisper.
+    Supports: MP3, WAV, M4A, FLAC, OGG, WEBM, MP4
+    """
+    start_time = time.time()
+
+    # Validate file type
+    allowed_types = ['audio/', 'video/mp4', 'video/webm']
+    if not file.content_type or not any(file.content_type.startswith(t) for t in allowed_types):
+        return WhisperTranscriptionResponse(
+            success=False,
+            error=f"Desteklenmeyen dosya türü: {file.content_type}. Desteklenen: MP3, WAV, M4A, FLAC, OGG, WEBM, MP4"
+        )
+
+    try:
+        # Read audio file to temp location
+        content = await file.read()
+
+        # Save to temp file (faster-whisper requires file path)
+        import tempfile
+        import os
+
+        suffix = os.path.splitext(file.filename)[1] if file.filename else '.mp3'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            # Load model (lazy)
+            whisper = get_whisper_model(model)
+
+            # Transcribe
+            segments_gen, info = whisper.transcribe(
+                tmp_path,
+                language=language,
+                task=task,
+                beam_size=5,
+                vad_filter=True,  # Voice Activity Detection for better accuracy
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
+
+            # Collect segments
+            segments = []
+            full_text_parts = []
+
+            for seg in segments_gen:
+                segments.append(WhisperSegment(
+                    id=seg.id,
+                    start=seg.start,
+                    end=seg.end,
+                    text=seg.text.strip(),
+                    avg_logprob=seg.avg_logprob,
+                    no_speech_prob=seg.no_speech_prob
+                ))
+                full_text_parts.append(seg.text.strip())
+
+            full_text = " ".join(full_text_parts)
+            processing_time = (time.time() - start_time) * 1000
+
+            return WhisperTranscriptionResponse(
+                success=True,
+                text=full_text,
+                segments=segments,
+                language=info.language,
+                language_probability=info.language_probability,
+                duration=info.duration,
+                processing_time_ms=processing_time,
+                model_used=model
+            )
+
+        finally:
+            # Clean up temp file
+            os.unlink(tmp_path)
+
+    except Exception as e:
+        import traceback
+        return WhisperTranscriptionResponse(
+            success=False,
+            error=str(e) + "\n" + traceback.format_exc(),
+            processing_time_ms=(time.time() - start_time) * 1000
+        )
+
+
+@app.get("/whisper-health")
+async def whisper_health():
+    """Check if Whisper service is ready"""
+    try:
+        # Check if faster-whisper is installed
+        from faster_whisper import WhisperModel
+
+        # Check for CUDA
+        import torch
+        cuda_available = torch.cuda.is_available()
+        device_name = torch.cuda.get_device_name(0) if cuda_available else "CPU"
+
+        return {
+            "status": "ready",
+            "engine": "faster-whisper",
+            "cuda_available": cuda_available,
+            "device": device_name,
+            "current_model": _whisper_model_name,
+            "available_models": [m.name for m in WHISPER_MODELS]
+        }
+    except ImportError as e:
+        return {"status": "not_installed", "message": str(e)}
     except Exception as e:
         return {"status": "error", "message": str(e)}

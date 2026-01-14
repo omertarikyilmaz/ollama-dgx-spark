@@ -26,7 +26,11 @@ let currentState = {
     ocrImage: null,   // Current loaded image
     ocrZoom: 1.0,     // Current zoom level
     ocrSearchMatches: [], // Search match indices
-    ocrCurrentMatch: -1   // Current match index for navigation
+    ocrCurrentMatch: -1,   // Current match index for navigation
+    // Whisper State
+    whisperFile: null,    // Current audio file
+    whisperResult: null,  // Transcription result
+    whisperSegmentsExpanded: true  // Segments panel state
 };
 
 // Initial state load
@@ -811,6 +815,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // OCR
     initOCRListeners();
+
+    // Whisper
+    initWhisperListeners();
 });
 
 // ============================================
@@ -1493,4 +1500,330 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+
+// ============================================
+// Whisper Speech-to-Text Service
+// ============================================
+
+function initWhisperListeners() {
+    const fileInput = document.getElementById('whisper-file-input');
+    const uploadZone = document.getElementById('whisper-upload-zone');
+    const transcribeBtn = document.getElementById('whisper-transcribe-btn');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => handleWhisperFileSelect(e.target.files[0]));
+    }
+
+    if (uploadZone) {
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleWhisperFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    if (transcribeBtn) {
+        transcribeBtn.addEventListener('click', transcribeAudio);
+    }
+
+    // Check Whisper health on page load
+    checkWhisperHealth();
+}
+
+async function checkWhisperHealth() {
+    const healthStatus = document.getElementById('whisper-health-status');
+    if (!healthStatus) return;
+
+    const dot = healthStatus.querySelector('.health-dot');
+    const text = healthStatus.querySelector('.health-text');
+
+    try {
+        const response = await apiCall('/whisper-health');
+
+        if (response.status === 'ready') {
+            dot.className = 'health-dot online';
+            text.textContent = response.cuda_available
+                ? `GPU: ${response.device}`
+                : 'CPU Modu';
+        } else {
+            dot.className = 'health-dot offline';
+            text.textContent = response.message || 'Whisper hazır değil';
+        }
+    } catch (error) {
+        dot.className = 'health-dot offline';
+        text.textContent = 'Bağlantı hatası';
+    }
+}
+
+function handleWhisperFileSelect(file) {
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['audio/', 'video/mp4', 'video/webm'];
+    if (!validTypes.some(t => file.type.startsWith(t))) {
+        showToast('Desteklenmeyen dosya türü. MP3, WAV, M4A, FLAC, OGG, WEBM veya MP4 kullanın.', 'error');
+        return;
+    }
+
+    currentState.whisperFile = file;
+    currentState.whisperResult = null;
+
+    // Show audio container
+    const uploadZone = document.getElementById('whisper-upload-zone');
+    const audioContainer = document.getElementById('whisper-audio-container');
+    const transcribeBtn = document.getElementById('whisper-transcribe-btn');
+    const fileName = document.getElementById('whisper-file-name');
+    const audioPlayer = document.getElementById('whisper-audio-player');
+
+    uploadZone.style.display = 'none';
+    audioContainer.style.display = 'block';
+    transcribeBtn.disabled = false;
+
+    fileName.textContent = file.name;
+
+    // Create object URL for audio player
+    const audioUrl = URL.createObjectURL(file);
+    audioPlayer.src = audioUrl;
+
+    // Reset results
+    resetWhisperResults();
+
+    showToast('Dosya yüklendi! "Metne Dönüştür" butonuna tıklayın.', 'success');
+}
+
+window.clearWhisperFile = function() {
+    currentState.whisperFile = null;
+    currentState.whisperResult = null;
+
+    const uploadZone = document.getElementById('whisper-upload-zone');
+    const audioContainer = document.getElementById('whisper-audio-container');
+    const transcribeBtn = document.getElementById('whisper-transcribe-btn');
+    const audioPlayer = document.getElementById('whisper-audio-player');
+    const fileInput = document.getElementById('whisper-file-input');
+
+    uploadZone.style.display = 'flex';
+    audioContainer.style.display = 'none';
+    transcribeBtn.disabled = true;
+
+    if (audioPlayer.src) {
+        URL.revokeObjectURL(audioPlayer.src);
+        audioPlayer.src = '';
+    }
+
+    fileInput.value = '';
+
+    resetWhisperResults();
+};
+
+function resetWhisperResults() {
+    const textContainer = document.getElementById('whisper-text-container');
+    const segmentsContainer = document.getElementById('whisper-segments-container');
+    const exportOptions = document.getElementById('whisper-export-options');
+    const statsPanel = document.getElementById('whisper-stats');
+
+    textContainer.innerHTML = `
+        <div class="result-placeholder">
+            <i class="fas fa-microphone"></i>
+            <p>Henüz transkripsiyon yapılmadı.<br>Sol taraftan ses dosyası yükleyerek başlayın.</p>
+        </div>
+    `;
+
+    segmentsContainer.style.display = 'none';
+    exportOptions.style.display = 'none';
+    statsPanel.style.display = 'none';
+}
+
+async function transcribeAudio() {
+    if (!currentState.whisperFile) {
+        showToast('Önce bir ses dosyası yükleyin', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('whisper-transcribe-btn');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> İşleniyor...';
+    btn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('file', currentState.whisperFile);
+        formData.append('model', document.getElementById('whisper-model-select').value);
+
+        const language = document.getElementById('whisper-language-select').value;
+        if (language) {
+            formData.append('language', language);
+        }
+
+        formData.append('task', document.getElementById('whisper-task-select').value);
+
+        const response = await fetch(`${API_BASE}/transcribe`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentState.whisperResult = data;
+            displayWhisperResults(data);
+            showToast(`Transkripsiyon tamamlandı! ${data.segments.length} segment bulundu.`, 'success');
+        } else {
+            showToast(`Hata: ${data.error}`, 'error');
+        }
+
+    } catch (error) {
+        console.error('Transcription error:', error);
+        showToast('Transkripsiyon hatası: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    }
+}
+
+function displayWhisperResults(data) {
+    const textContainer = document.getElementById('whisper-text-container');
+    const segmentsContainer = document.getElementById('whisper-segments-container');
+    const segmentsList = document.getElementById('whisper-segments-list');
+    const exportOptions = document.getElementById('whisper-export-options');
+    const statsPanel = document.getElementById('whisper-stats');
+
+    // Show stats
+    statsPanel.style.display = 'grid';
+    document.getElementById('whisper-time').textContent = `${(data.processing_time_ms / 1000).toFixed(1)}s`;
+    document.getElementById('whisper-duration').textContent = formatDuration(data.duration);
+    document.getElementById('whisper-detected-lang').textContent = getLanguageName(data.language);
+    document.getElementById('whisper-model-used').textContent = data.model_used;
+
+    // Display full text
+    textContainer.innerHTML = `
+        <div class="whisper-full-text">
+            <p>${escapeHtml(data.text)}</p>
+        </div>
+    `;
+
+    // Display segments
+    segmentsContainer.style.display = 'block';
+    segmentsList.innerHTML = data.segments.map(seg => `
+        <div class="whisper-segment" onclick="seekAudioTo(${seg.start})">
+            <div class="segment-time">
+                <span class="start">${formatTime(seg.start)}</span>
+                <span class="separator">→</span>
+                <span class="end">${formatTime(seg.end)}</span>
+            </div>
+            <div class="segment-text">${escapeHtml(seg.text)}</div>
+        </div>
+    `).join('');
+
+    // Show export options
+    exportOptions.style.display = 'flex';
+}
+
+window.seekAudioTo = function(seconds) {
+    const audioPlayer = document.getElementById('whisper-audio-player');
+    if (audioPlayer) {
+        audioPlayer.currentTime = seconds;
+        audioPlayer.play();
+    }
+};
+
+window.toggleSegmentsView = function() {
+    const segmentsList = document.getElementById('whisper-segments-list');
+    currentState.whisperSegmentsExpanded = !currentState.whisperSegmentsExpanded;
+    segmentsList.style.display = currentState.whisperSegmentsExpanded ? 'flex' : 'none';
+};
+
+window.copyWhisperText = function() {
+    if (!currentState.whisperResult) return;
+
+    navigator.clipboard.writeText(currentState.whisperResult.text).then(() => {
+        showToast('Metin panoya kopyalandı!', 'success');
+    }).catch(() => {
+        showToast('Kopyalama başarısız', 'error');
+    });
+};
+
+window.downloadWhisperText = function() {
+    if (!currentState.whisperResult) return;
+
+    const text = currentState.whisperResult.text;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, 'transkripsiyon.txt');
+    showToast('Dosya indirildi!', 'success');
+};
+
+window.downloadWhisperSRT = function() {
+    if (!currentState.whisperResult) return;
+
+    const segments = currentState.whisperResult.segments;
+    let srt = '';
+
+    segments.forEach((seg, idx) => {
+        srt += `${idx + 1}\n`;
+        srt += `${formatSRTTime(seg.start)} --> ${formatSRTTime(seg.end)}\n`;
+        srt += `${seg.text}\n\n`;
+    });
+
+    const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, 'altyazi.srt');
+    showToast('SRT dosyası indirildi!', 'success');
+};
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
+
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function formatDuration(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    if (mins > 0) {
+        return `${mins}dk ${secs}sn`;
+    }
+    return `${secs}sn`;
+}
+
+function formatSRTTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 1000);
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
+}
+
+function getLanguageName(code) {
+    const langs = {
+        'tr': 'Türkçe',
+        'en': 'İngilizce',
+        'de': 'Almanca',
+        'fr': 'Fransızca',
+        'es': 'İspanyolca',
+        'ar': 'Arapça',
+        'ru': 'Rusça',
+        'ja': 'Japonca',
+        'zh': 'Çince',
+        'ko': 'Korece',
+        'pt': 'Portekizce',
+        'it': 'İtalyanca'
+    };
+    return langs[code] || code;
 }

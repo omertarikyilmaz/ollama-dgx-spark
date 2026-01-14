@@ -149,3 +149,36 @@ class NewspaperOCRResponse(BaseModel):
     image_width: int = 0
     image_height: int = 0
     error: Optional[str] = None
+
+
+# ============== Whisper Speech-to-Text Models ==============
+
+class WhisperSegment(BaseModel):
+    """Single transcription segment"""
+    id: int
+    start: float = Field(..., description="Start time in seconds")
+    end: float = Field(..., description="End time in seconds")
+    text: str
+    avg_logprob: Optional[float] = None
+    no_speech_prob: Optional[float] = None
+
+
+class WhisperTranscriptionResponse(BaseModel):
+    """Response from Whisper transcription"""
+    success: bool
+    text: str = Field(default="", description="Full transcribed text")
+    segments: List[WhisperSegment] = Field(default_factory=list, description="Segments with timestamps")
+    language: str = Field(default="", description="Detected language")
+    language_probability: float = Field(default=0.0, description="Language detection confidence")
+    duration: float = Field(default=0.0, description="Audio duration in seconds")
+    processing_time_ms: float = 0
+    model_used: str = Field(default="", description="Whisper model used")
+    error: Optional[str] = None
+
+
+class WhisperModelInfo(BaseModel):
+    """Information about available Whisper models"""
+    name: str
+    size: str
+    description: str
+    recommended: bool = False

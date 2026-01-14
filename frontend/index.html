@@ -89,6 +89,13 @@
                     <h3>Gazete OCR</h3>
                     <p>Gazete sayfalarını yükleyerek metni otomatik çıkarın, kelime bazlı arama yapın.</p>
                 </div>
+
+                <!-- Ses Transkripsiyon -->
+                <div class="service-card" onclick="navigateTo('whisper')">
+                    <div class="service-icon" style="color: #06b6d4;"><i class="fas fa-microphone"></i></div>
+                    <h3>Ses Transkripsiyon</h3>
+                    <p>Ses ve video dosyalarını metne dönüştürün. Whisper AI ile yüksek doğrulukta transkripsiyon.</p>
+                </div>
             </div>
         </main>
 
@@ -446,7 +453,150 @@
             </div>
         </div>
 
-        <!-- 8. News (Templates) View - Legacy compatible -->
+        <!-- 8. Whisper Transcription View -->
+        <div id="view-whisper" class="service-view">
+            <div class="view-header">
+                <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
+                <div class="view-title">
+                    <h2>🎤 Ses Transkripsiyon</h2>
+                    <p>Whisper AI ile ses ve video dosyalarını metne dönüştürün</p>
+                </div>
+            </div>
+
+            <div class="whisper-layout">
+                <!-- Left Panel: Upload & Controls -->
+                <div class="whisper-control-panel">
+                    <!-- Upload Zone -->
+                    <div class="whisper-upload-zone" id="whisper-upload-zone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>Ses/Video Dosyası Yükle</p>
+                        <span>MP3, WAV, M4A, FLAC, OGG, WEBM, MP4</span>
+                        <input type="file" id="whisper-file-input" accept="audio/*,video/mp4,video/webm" hidden>
+                        <button class="overlay-btn" onclick="document.getElementById('whisper-file-input').click()"></button>
+                    </div>
+
+                    <!-- Audio Player -->
+                    <div id="whisper-audio-container" class="whisper-audio-container" style="display: none;">
+                        <div class="audio-file-info">
+                            <i class="fas fa-file-audio"></i>
+                            <span id="whisper-file-name">dosya.mp3</span>
+                            <button class="btn btn-sm btn-danger" onclick="clearWhisperFile()" title="Kaldır">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <audio id="whisper-audio-player" controls></audio>
+                    </div>
+
+                    <!-- Model Selection -->
+                    <div class="whisper-options">
+                        <div class="option-group">
+                            <label>Model Seçimi</label>
+                            <select id="whisper-model-select">
+                                <option value="tiny">Tiny (39M) - En hızlı</option>
+                                <option value="base">Base (74M) - Hızlı</option>
+                                <option value="small" selected>Small (244M) - Önerilen</option>
+                                <option value="medium">Medium (769M) - Yüksek doğruluk</option>
+                                <option value="large-v3">Large-v3 (1.5GB) - En iyi</option>
+                            </select>
+                        </div>
+
+                        <div class="option-group">
+                            <label>Dil (Opsiyonel)</label>
+                            <select id="whisper-language-select">
+                                <option value="">Otomatik Algıla</option>
+                                <option value="tr">Türkçe</option>
+                                <option value="en">İngilizce</option>
+                                <option value="de">Almanca</option>
+                                <option value="fr">Fransızca</option>
+                                <option value="es">İspanyolca</option>
+                                <option value="ar">Arapça</option>
+                                <option value="ru">Rusça</option>
+                                <option value="ja">Japonca</option>
+                                <option value="zh">Çince</option>
+                            </select>
+                        </div>
+
+                        <div class="option-group">
+                            <label>Görev</label>
+                            <select id="whisper-task-select">
+                                <option value="transcribe">Transkripsiyon</option>
+                                <option value="translate">İngilizce'ye Çeviri</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Transcribe Button -->
+                    <button id="whisper-transcribe-btn" class="btn btn-primary btn-large" style="width: 100%;" disabled>
+                        <i class="fas fa-magic"></i> Metne Dönüştür
+                    </button>
+
+                    <!-- Stats Panel -->
+                    <div id="whisper-stats" class="whisper-stats" style="display: none;">
+                        <div class="stat-item">
+                            <span class="stat-label">İşlem Süresi</span>
+                            <span class="stat-value" id="whisper-time">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Ses Süresi</span>
+                            <span class="stat-value" id="whisper-duration">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Dil</span>
+                            <span class="stat-value" id="whisper-detected-lang">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Model</span>
+                            <span class="stat-value" id="whisper-model-used">-</span>
+                        </div>
+                    </div>
+
+                    <!-- Whisper Health Status -->
+                    <div id="whisper-health-status" class="whisper-health">
+                        <span class="health-dot"></span>
+                        <span class="health-text">Kontrol ediliyor...</span>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Results -->
+                <div class="whisper-results-panel">
+                    <!-- Full Text Result -->
+                    <div class="whisper-text-container" id="whisper-text-container">
+                        <div class="result-placeholder">
+                            <i class="fas fa-microphone"></i>
+                            <p>Henüz transkripsiyon yapılmadı.<br>Sol taraftan ses dosyası yükleyerek başlayın.</p>
+                        </div>
+                    </div>
+
+                    <!-- Segments Timeline -->
+                    <div id="whisper-segments-container" class="whisper-segments-container" style="display: none;">
+                        <div class="segments-header">
+                            <h4><i class="fas fa-list-ul"></i> Zaman Damgalı Segmentler</h4>
+                            <button class="btn btn-sm" onclick="toggleSegmentsView()">
+                                <i class="fas fa-compress-alt"></i>
+                            </button>
+                        </div>
+                        <div id="whisper-segments-list" class="whisper-segments-list">
+                            <!-- Segments will be rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- Export Options -->
+                    <div id="whisper-export-options" class="whisper-export-options" style="display: none;">
+                        <button class="btn btn-secondary" onclick="copyWhisperText()">
+                            <i class="fas fa-copy"></i> Kopyala
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadWhisperText()">
+                            <i class="fas fa-download"></i> TXT İndir
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadWhisperSRT()">
+                            <i class="fas fa-closed-captioning"></i> SRT İndir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 9. News (Templates) View - Legacy compatible -->
         <div id="view-news" class="service-view">
             <div class="view-header">
                 <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
