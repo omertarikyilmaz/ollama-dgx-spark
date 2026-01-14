@@ -734,26 +734,13 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
         # Number of data rows (excluding header and totals)
         data_row_count = len(summary)
 
-        # Standardize Tüm Veriler column order
-        standard_columns = [
-            'S.No', 'Id - Link', 'Mecra', 'Yıl', 'Ay', 'Tarih', 'Basın İçeriği',
-            'Şehir', 'Ana Yayın', 'Yayın', 'Başlık', 'Sayfa', 'Alan', 'Erişim',
-            'Re.Eş. (TRY)', 'Link', 'Tür', 'Kategori', 'Grup Id', 'Markalar',
-            'Kanal', 'Program', 'Saat', 'Süre', 'Dağılım', 'StxCm', 'Mecra_Grup'
-        ]
-        
-        # Create standardized DataFrame with all columns (missing ones will be empty)
-        standardized_df = pd.DataFrame()
-        for col in standard_columns:
-            if col in merged_df.columns:
-                standardized_df[col] = merged_df[col]
-            else:
-                standardized_df[col] = ''  # Empty column if not present
+        # Tüm Veriler için orijinal kolonları koru, sadece Mecra_Grup'u çıkar
+        tum_veriler_df = merged_df.drop(columns=['Mecra_Grup'], errors='ignore')
 
         # Create the Excel file
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            standardized_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
+            tum_veriler_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
             # Write summary WITHOUT totals row (will add with formulas)
             summary.to_excel(writer, sheet_name='Yönetici Özeti', index=False, startrow=0, startcol=0)
             
