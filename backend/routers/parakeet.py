@@ -1,9 +1,8 @@
 """NVIDIA Parakeet ultra-fast speech-to-text endpoints"""
 import os
+import subprocess
 import tempfile
 import time
-import soundfile as sf
-import numpy as np
 from fastapi import APIRouter, UploadFile, File, Form
 from models import ParakeetTranscriptionResponse, ParakeetSegment, ParakeetModelInfo
 
@@ -15,33 +14,40 @@ TARGET_SAMPLE_RATE = 16000
 
 def preprocess_audio(input_path: str) -> tuple[str, float]:
     """
-    Preprocess audio file for Parakeet:
+    Preprocess audio file for Parakeet using FFmpeg:
+    - Convert any format to WAV
     - Convert stereo to mono
     - Resample to 16kHz
-    - Save as WAV
     Returns: (processed_file_path, duration_seconds)
     """
-    # Read audio file
-    audio_data, sample_rate = sf.read(input_path)
+    # Create output temp file
+    output_fd, output_path = tempfile.mkstemp(suffix='.wav')
+    os.close(output_fd)
 
-    # Convert stereo to mono if needed
-    if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
-        audio_data = np.mean(audio_data, axis=1)
+    # Use FFmpeg to convert to 16kHz mono WAV (supports all formats)
+    cmd = [
+        'ffmpeg', '-y', '-i', input_path,
+        '-ar', str(TARGET_SAMPLE_RATE),  # Sample rate 16kHz
+        '-ac', '1',  # Mono
+        '-c:a', 'pcm_s16le',  # 16-bit PCM
+        output_path
+    ]
 
-    # Resample to 16kHz if needed
-    if sample_rate != TARGET_SAMPLE_RATE:
-        from scipy import signal
-        num_samples = int(len(audio_data) * TARGET_SAMPLE_RATE / sample_rate)
-        audio_data = signal.resample(audio_data, num_samples)
-        sample_rate = TARGET_SAMPLE_RATE
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg error: {result.stderr}")
 
-    # Calculate duration
-    duration = len(audio_data) / sample_rate
+    # Get duration using ffprobe
+    duration_cmd = [
+        'ffprobe', '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        output_path
+    ]
+    duration_result = subprocess.run(duration_cmd, capture_output=True, text=True)
+    duration = float(duration_result.stdout.strip()) if duration_result.stdout.strip() else 0.0
 
-    # Save processed audio to temp file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp:
-        sf.write(tmp.name, audio_data, sample_rate)
-        return tmp.name, duration
+    return output_path, duration
 
 # Global parakeet model (lazy loaded)
 _parakeet_model = None

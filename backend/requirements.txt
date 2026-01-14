@@ -17,8 +17,5 @@ numpy
 # Whisper Speech-to-Text (OpenAI Whisper with Blackwell GPU support)
 openai-whisper
 # NVIDIA NeMo Parakeet ASR (Ultra-fast speech-to-text)
-# Note: Install order matters - Cython first, then pynini (needs OpenFST), then NeMo
 Cython
 nemo_toolkit[asr]
-scipy
-soundfile
