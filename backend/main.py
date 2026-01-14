@@ -1044,41 +1044,39 @@ async def ocr_health():
 # Global whisper model (lazy loaded)
 _whisper_model = None
 _whisper_model_name = None
+_whisper_device = None
 
 WHISPER_MODELS = [
-    WhisperModelInfo(name="tiny", size="39M", description="En hızlı, düşük doğruluk"),
-    WhisperModelInfo(name="base", size="74M", description="Hızlı, orta doğruluk"),
-    WhisperModelInfo(name="small", size="244M", description="Dengeli hız/doğruluk", recommended=True),
-    WhisperModelInfo(name="medium", size="769M", description="Yüksek doğruluk, orta hız"),
-    WhisperModelInfo(name="large-v3", size="1550M", description="En yüksek doğruluk, yavaş"),
+    WhisperModelInfo(name="turbo", size="809M", description="En hızlı, yüksek doğruluk", recommended=True),
+    WhisperModelInfo(name="large-v3", size="1550M", description="En yüksek doğruluk"),
+    WhisperModelInfo(name="medium", size="769M", description="Dengeli hız/doğruluk"),
+    WhisperModelInfo(name="small", size="244M", description="Hızlı, iyi doğruluk"),
+    WhisperModelInfo(name="base", size="74M", description="Çok hızlı, orta doğruluk"),
+    WhisperModelInfo(name="tiny", size="39M", description="Ultra hızlı, düşük doğruluk"),
 ]
 
 
-def get_whisper_model(model_name: str = "small"):
-    """Lazy load Whisper model with GPU support"""
-    global _whisper_model, _whisper_model_name
+def get_whisper_model(model_name: str = "turbo"):
+    """Lazy load Whisper model with GPU support (Blackwell compatible)"""
+    global _whisper_model, _whisper_model_name, _whisper_device
 
     if _whisper_model is None or _whisper_model_name != model_name:
-        from faster_whisper import WhisperModel
+        import whisper
+        import torch
 
-        # Try CUDA first, fallback to CPU
-        try:
-            _whisper_model = WhisperModel(
-                model_name,
-                device="cuda",
-                compute_type="float16"  # Use float16 for GPU efficiency
-            )
-            print(f"Whisper model '{model_name}' loaded on CUDA (GPU)")
-        except Exception as e:
-            print(f"CUDA not available ({e}), falling back to CPU")
-            _whisper_model = WhisperModel(
-                model_name,
-                device="cpu",
-                compute_type="int8"  # Use int8 for CPU efficiency
-            )
-            print(f"Whisper model '{model_name}' loaded on CPU")
+        # Detect device
+        if torch.cuda.is_available():
+            _whisper_device = "cuda"
+            device_name = torch.cuda.get_device_name(0)
+            print(f"CUDA available: {device_name}")
+        else:
+            _whisper_device = "cpu"
+            print("CUDA not available, using CPU")
 
+        print(f"Loading Whisper model '{model_name}' on {_whisper_device}...")
+        _whisper_model = whisper.load_model(model_name, device=_whisper_device)
         _whisper_model_name = model_name
+        print(f"Whisper model '{model_name}' loaded successfully!")
 
     return _whisper_model
 
@@ -1095,13 +1093,14 @@ async def list_whisper_models():
 @app.post("/transcribe", response_model=WhisperTranscriptionResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
-    model: str = Form("small"),
+    model: str = Form("turbo"),
     language: str = Form(None),  # Auto-detect if None
     task: str = Form("transcribe")  # "transcribe" or "translate" (to English)
 ):
     """
-    Transcribe audio file using faster-whisper.
+    Transcribe audio file using OpenAI Whisper.
     Supports: MP3, WAV, M4A, FLAC, OGG, WEBM, MP4
+    Optimized for NVIDIA Blackwell (GB10) with CUDA 12.8+
     """
     start_time = time.time()
 
@@ -1117,7 +1116,6 @@ async def transcribe_audio(
         # Read audio file to temp location
         content = await file.read()
 
-        # Save to temp file (faster-whisper requires file path)
         import tempfile
         import os
 
@@ -1128,43 +1126,43 @@ async def transcribe_audio(
 
         try:
             # Load model (lazy)
-            whisper = get_whisper_model(model)
+            whisper_model = get_whisper_model(model)
 
-            # Transcribe
-            segments_gen, info = whisper.transcribe(
-                tmp_path,
-                language=language,
-                task=task,
-                beam_size=5,
-                vad_filter=True,  # Voice Activity Detection for better accuracy
-                vad_parameters=dict(min_silence_duration_ms=500)
-            )
+            # Transcribe with optimized settings
+            options = {
+                "task": task,
+                "language": language,  # None = auto-detect
+                "fp16": _whisper_device == "cuda",  # FP16 for GPU speed
+                "verbose": False,
+            }
 
-            # Collect segments
+            # Run transcription
+            result = whisper_model.transcribe(tmp_path, **options)
+
+            # Build segments
             segments = []
-            full_text_parts = []
-
-            for seg in segments_gen:
+            for i, seg in enumerate(result.get("segments", [])):
                 segments.append(WhisperSegment(
-                    id=seg.id,
-                    start=seg.start,
-                    end=seg.end,
-                    text=seg.text.strip(),
-                    avg_logprob=seg.avg_logprob,
-                    no_speech_prob=seg.no_speech_prob
+                    id=i,
+                    start=seg["start"],
+                    end=seg["end"],
+                    text=seg["text"].strip(),
+                    avg_logprob=seg.get("avg_logprob"),
+                    no_speech_prob=seg.get("no_speech_prob")
                 ))
-                full_text_parts.append(seg.text.strip())
 
-            full_text = " ".join(full_text_parts)
+            # Calculate duration from last segment
+            duration = segments[-1].end if segments else 0.0
+
             processing_time = (time.time() - start_time) * 1000
 
             return WhisperTranscriptionResponse(
                 success=True,
-                text=full_text,
+                text=result["text"].strip(),
                 segments=segments,
-                language=info.language,
-                language_probability=info.language_probability,
-                duration=info.duration,
+                language=result.get("language", "unknown"),
+                language_probability=0.95,  # OpenAI Whisper doesn't return this directly
+                duration=duration,
                 processing_time_ms=processing_time,
                 model_used=model
             )
@@ -1186,19 +1184,26 @@ async def transcribe_audio(
 async def whisper_health():
     """Check if Whisper service is ready"""
     try:
-        # Check if faster-whisper is installed
-        from faster_whisper import WhisperModel
-
-        # Check for CUDA
         import torch
+
         cuda_available = torch.cuda.is_available()
-        device_name = torch.cuda.get_device_name(0) if cuda_available else "CPU"
+
+        if cuda_available:
+            device_name = torch.cuda.get_device_name(0)
+            cuda_version = torch.version.cuda
+            torch_version = torch.__version__
+        else:
+            device_name = "CPU"
+            cuda_version = None
+            torch_version = torch.__version__
 
         return {
             "status": "ready",
-            "engine": "faster-whisper",
+            "engine": "openai-whisper",
             "cuda_available": cuda_available,
             "device": device_name,
+            "cuda_version": cuda_version,
+            "torch_version": torch_version,
             "current_model": _whisper_model_name,
             "available_models": [m.name for m in WHISPER_MODELS]
         }

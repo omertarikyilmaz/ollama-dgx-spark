@@ -14,5 +14,5 @@ lxml
 pytesseract
 Pillow
 numpy
-# Whisper Speech-to-Text (faster-whisper - 4x faster than OpenAI Whisper)
-faster-whisper
+# Whisper Speech-to-Text (OpenAI Whisper with Blackwell GPU support)
+openai-whisper
