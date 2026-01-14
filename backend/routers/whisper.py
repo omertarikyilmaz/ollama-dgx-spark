@@ -1,14 +1,62 @@
 """
 Whisper speech-to-text endpoints - HuggingFace Transformers with SDPA + Batching
 Optimized for NVIDIA Blackwell (ARM64) - 10-15x faster than openai-whisper
+Supports video files up to 1.5 hours - auto converts to audio
 """
 import os
+import subprocess
 import tempfile
 import time
 from fastapi import APIRouter, UploadFile, File, Form
 from models import WhisperTranscriptionResponse, WhisperSegment, WhisperModelInfo
 
 router = APIRouter(tags=["Whisper"])
+
+# Maximum duration: 1.5 hours (90 minutes)
+MAX_DURATION_SECONDS = 90 * 60
+
+# Supported file types
+AUDIO_TYPES = ['audio/']
+VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/x-msvideo', 'video/quicktime', 'video/x-matroska', 'video/avi', 'video/mkv', 'video/mov']
+
+
+def extract_audio_from_video(video_path: str) -> tuple[str, float]:
+    """
+    Extract audio from video file using FFmpeg.
+    Returns: (audio_file_path, duration_seconds)
+    """
+    # Get video duration
+    duration_cmd = [
+        'ffprobe', '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        video_path
+    ]
+    duration_result = subprocess.run(duration_cmd, capture_output=True, text=True)
+    duration = float(duration_result.stdout.strip()) if duration_result.stdout.strip() else 0.0
+
+    # Check duration limit
+    if duration > MAX_DURATION_SECONDS:
+        raise ValueError(f"Video çok uzun: {duration/60:.1f} dakika. Maksimum: {MAX_DURATION_SECONDS/60:.0f} dakika (1.5 saat)")
+
+    # Extract audio to WAV (16kHz mono for optimal Whisper performance)
+    audio_fd, audio_path = tempfile.mkstemp(suffix='.wav')
+    os.close(audio_fd)
+
+    extract_cmd = [
+        'ffmpeg', '-y', '-i', video_path,
+        '-vn',                    # No video
+        '-acodec', 'pcm_s16le',   # 16-bit PCM
+        '-ar', '16000',           # 16kHz sample rate
+        '-ac', '1',               # Mono
+        audio_path
+    ]
+
+    result = subprocess.run(extract_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg ses çıkarma hatası: {result.stderr}")
+
+    return audio_path, duration
 
 # Global whisper pipeline (lazy loaded)
 _whisper_pipe = None
@@ -137,18 +185,26 @@ async def transcribe_audio(
     task: str = Form("transcribe")
 ):
     """
-    Transcribe audio using HuggingFace Whisper with SDPA + Batching.
+    Transcribe audio/video using HuggingFace Whisper with SDPA + Batching.
     10-15x faster than openai-whisper on GPU.
-    Supports: MP3, WAV, M4A, FLAC, OGG, WEBM, MP4
+    Supports: MP3, WAV, M4A, FLAC, OGG + Video (MP4, WEBM, AVI, MKV, MOV) up to 1.5 hours
+    Videos are automatically converted to audio.
     """
     start_time = time.time()
 
-    allowed_types = ['audio/', 'video/mp4', 'video/webm']
-    if not file.content_type or not any(file.content_type.startswith(t) for t in allowed_types):
+    # Check file type
+    content_type = file.content_type or ""
+    is_audio = any(content_type.startswith(t) for t in AUDIO_TYPES)
+    is_video = any(content_type.startswith(t) for t in VIDEO_TYPES) or any(content_type.startswith(t) for t in ['video/'])
+
+    if not is_audio and not is_video:
         return WhisperTranscriptionResponse(
             success=False,
-            error=f"Desteklenmeyen dosya türü: {file.content_type}. Desteklenen: MP3, WAV, M4A, FLAC, OGG, WEBM, MP4"
+            error=f"Desteklenmeyen dosya türü: {content_type}. Desteklenen: Ses (MP3, WAV, M4A, FLAC, OGG) veya Video (MP4, WEBM, AVI, MKV, MOV)"
         )
+
+    tmp_path = None
+    audio_path = None
 
     try:
         content = await file.read()
@@ -157,6 +213,14 @@ async def transcribe_audio(
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
+
+        # If video, extract audio first
+        if is_video:
+            print(f"Video algılandı, ses çıkarılıyor: {file.filename}")
+            audio_path, video_duration = extract_audio_from_video(tmp_path)
+            process_path = audio_path
+        else:
+            process_path = tmp_path
 
         try:
             pipe = get_whisper_pipeline(model)
@@ -172,7 +236,7 @@ async def transcribe_audio(
 
             # Run inference with batching
             result = pipe(
-                tmp_path,
+                process_path,
                 chunk_length_s=30,            # 30-second chunks (optimal for Whisper)
                 batch_size=_batch_size,       # Parallel batch processing
                 return_timestamps=True,       # Get word/segment timestamps
@@ -212,10 +276,19 @@ async def transcribe_audio(
             )
 
         finally:
-            os.unlink(tmp_path)
+            # Cleanup temp files
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            if audio_path and os.path.exists(audio_path):
+                os.unlink(audio_path)
 
     except Exception as e:
         import traceback
+        # Cleanup on error
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        if audio_path and os.path.exists(audio_path):
+            os.unlink(audio_path)
         return WhisperTranscriptionResponse(
             success=False,
             error=str(e) + "\n" + traceback.format_exc(),
