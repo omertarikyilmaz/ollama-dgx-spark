@@ -1027,22 +1027,33 @@ function initOCRListeners() {
 }
 
 function handleOCRFileSelect(file) {
+    console.log('File selected:', file);
+
     if (!file || !file.type.startsWith('image/')) {
         showToast('Lütfen geçerli bir görsel dosyası seçin', 'error');
         return;
     }
 
+    showToast('Görsel yükleniyor...', 'info');
+
     const reader = new FileReader();
     reader.onload = (e) => {
+        console.log('File loaded, size:', e.target.result.length);
         currentState.ocrImage = e.target.result;
         currentState.ocrResult = null;
         currentState.ocrZoom = 1.0;
         showOCRImagePreview();
     };
+    reader.onerror = (e) => {
+        console.error('File read error:', e);
+        showToast('Dosya okuma hatası', 'error');
+    };
     reader.readAsDataURL(file);
 }
 
 function showOCRImagePreview() {
+    console.log('Showing OCR preview');
+
     const uploadZone = document.getElementById('ocr-upload-zone');
     const imageContainer = document.getElementById('ocr-image-container');
     const previewImage = document.getElementById('ocr-preview-image');
@@ -1061,6 +1072,7 @@ function showOCRImagePreview() {
     statsPanel.style.display = 'none';
     exportOptions.style.display = 'none';
     searchInput.disabled = true;
+    searchInput.value = '';
     textContainer.innerHTML = `
         <div class="result-placeholder">
             <i class="fas fa-magic"></i>
@@ -1071,11 +1083,20 @@ function showOCRImagePreview() {
     // Set image
     previewImage.src = currentState.ocrImage;
     previewImage.onload = () => {
+        console.log('Image loaded:', previewImage.naturalWidth, 'x', previewImage.naturalHeight);
+        currentState.ocrZoom = 1.0;
         updateOCRZoom();
+        showToast('Görsel hazır! "Metni Çıkar" butonuna tıklayın.', 'success');
+    };
+    previewImage.onerror = () => {
+        console.error('Image load error');
+        showToast('Görsel yüklenemedi', 'error');
     };
 }
 
 async function extractOCRText() {
+    console.log('Extract OCR text called');
+
     if (!currentState.ocrImage) {
         showToast('Önce bir görsel yükleyin', 'error');
         return;
@@ -1087,34 +1108,40 @@ async function extractOCRText() {
     btn.disabled = true;
 
     try {
+        console.log('Converting image to blob...');
         // Convert base64 to blob
         const response = await fetch(currentState.ocrImage);
         const blob = await response.blob();
+        console.log('Blob created, size:', blob.size);
 
         // Create FormData
         const formData = new FormData();
         formData.append('file', blob, 'newspaper.png');
 
+        console.log('Calling OCR API...');
         // Call API
         const result = await fetch(`${API_BASE}/ocr-newspaper`, {
             method: 'POST',
             body: formData
         });
 
+        console.log('API response status:', result.status);
         const data = await result.json();
+        console.log('OCR result:', data);
 
         if (data.success) {
             currentState.ocrResult = data;
             displayOCRResults();
             drawOCRBboxes();
-            showToast('Metin başarıyla çıkarıldı!', 'success');
+            showToast(`${data.word_count} kelime, ${data.lines.length} satır bulundu!`, 'success');
         } else {
+            console.error('OCR failed:', data.error);
             showToast(`OCR hatası: ${data.error}`, 'error');
         }
 
     } catch (error) {
         console.error('OCR error:', error);
-        showToast('OCR işlemi başarısız', 'error');
+        showToast('OCR işlemi başarısız: ' + error.message, 'error');
     } finally {
         btn.innerHTML = originalContent;
         btn.disabled = false;
@@ -1279,10 +1306,20 @@ window.resetOCRZoom = function() {
 
 function updateOCRZoom() {
     const img = document.getElementById('ocr-preview-image');
+    const canvas = document.getElementById('ocr-overlay-canvas');
     const zoomLabel = document.getElementById('ocr-zoom-level');
 
-    if (img) {
-        img.style.transform = `scale(${currentState.ocrZoom})`;
+    if (img && img.naturalWidth > 0) {
+        const newWidth = img.naturalWidth * currentState.ocrZoom;
+        const newHeight = img.naturalHeight * currentState.ocrZoom;
+
+        img.style.width = `${newWidth}px`;
+        img.style.height = `${newHeight}px`;
+
+        if (canvas) {
+            canvas.style.width = `${newWidth}px`;
+            canvas.style.height = `${newHeight}px`;
+        }
     }
 
     if (zoomLabel) {

@@ -981,6 +981,26 @@ header {
     background: var(--bg-secondary);
 }
 
+.btn-danger {
+    background: var(--danger);
+    color: #fff;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+.btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
 .loading-spinner {
     width: 20px;
     height: 20px;
@@ -1033,9 +1053,9 @@ header {
 
 .ocr-layout {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-    height: calc(100vh - 180px);
+    grid-template-columns: 1.2fr 1fr;
+    gap: 1.5rem;
+    height: calc(100vh - 200px);
     overflow: hidden;
 }
 
@@ -1050,10 +1070,10 @@ header {
 }
 
 .ocr-upload-zone {
-    padding: 3rem;
+    padding: 4rem 2rem;
     background: var(--bg-tertiary);
-    border: 2px dashed var(--border);
-    border-radius: var(--radius-md);
+    border: 3px dashed var(--border);
+    border-radius: var(--radius-lg);
     cursor: pointer;
     position: relative;
     display: flex;
@@ -1061,18 +1081,21 @@ header {
     align-items: center;
     justify-content: center;
     gap: 1rem;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
     text-align: center;
+    min-height: 250px;
 }
 
 .ocr-upload-zone:hover {
     border-color: var(--accent-pink);
-    background: rgba(236, 72, 153, 0.05);
+    background: rgba(236, 72, 153, 0.08);
+    transform: translateY(-2px);
 }
 
 .ocr-upload-zone.dragover {
     border-color: var(--accent-pink);
-    background: rgba(236, 72, 153, 0.1);
+    background: rgba(236, 72, 153, 0.15);
+    border-style: solid;
 }
 
 .ocr-upload-zone i {
@@ -1087,8 +1110,16 @@ header {
 }
 
 .ocr-upload-zone span {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
+}
+
+.ocr-upload-zone .overlay-btn {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 1;
 }
 
 .ocr-image-container {
@@ -1104,15 +1135,12 @@ header {
     overflow: auto;
     background: var(--bg-tertiary);
     border-radius: var(--radius-md);
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
 }
 
 .ocr-image-wrapper img {
-    max-width: none;
-    transform-origin: top left;
-    transition: transform 0.2s ease;
+    display: block;
+    max-width: 100%;
+    height: auto;
 }
 
 .ocr-image-wrapper canvas {
