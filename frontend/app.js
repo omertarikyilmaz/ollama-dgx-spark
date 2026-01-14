@@ -30,7 +30,8 @@ let currentState = {
     // Whisper State
     whisperFile: null,    // Current audio file
     whisperResult: null,  // Transcription result
-    whisperSegmentsExpanded: true  // Segments panel state
+    whisperSegmentsExpanded: true,  // Segments panel state
+    whisperHistory: []    // Request history for performance tracking
 };
 
 // Initial state load
@@ -1695,12 +1696,33 @@ function displayWhisperResults(data) {
     const exportOptions = document.getElementById('whisper-export-options');
     const statsPanel = document.getElementById('whisper-stats');
 
+    // Calculate RTF (Real-Time Factor) - how many times faster than realtime
+    const processingTimeSec = data.processing_time_ms / 1000;
+    const rtf = data.duration / processingTimeSec;
+
     // Show stats
     statsPanel.style.display = 'grid';
-    document.getElementById('whisper-time').textContent = `${(data.processing_time_ms / 1000).toFixed(1)}s`;
+    document.getElementById('whisper-time').textContent = `${processingTimeSec.toFixed(1)}s`;
     document.getElementById('whisper-duration').textContent = formatDuration(data.duration);
-    document.getElementById('whisper-detected-lang').textContent = getLanguageName(data.language);
+    document.getElementById('whisper-speed').textContent = `${rtf.toFixed(1)}x`;
     document.getElementById('whisper-model-used').textContent = data.model_used;
+
+    // Add to history
+    const historyEntry = {
+        id: Date.now(),
+        fileName: currentState.whisperFile?.name || 'Dosya',
+        audioDuration: data.duration,
+        processingTime: processingTimeSec,
+        rtf: rtf,
+        model: data.model_used,
+        language: data.language,
+        timestamp: new Date().toLocaleTimeString('tr-TR')
+    };
+    currentState.whisperHistory.unshift(historyEntry);
+    if (currentState.whisperHistory.length > 20) {
+        currentState.whisperHistory.pop(); // Keep max 20 entries
+    }
+    renderWhisperHistory();
 
     // Display full text
     textContainer.innerHTML = `
@@ -1725,6 +1747,42 @@ function displayWhisperResults(data) {
     // Show export options
     exportOptions.style.display = 'flex';
 }
+
+function renderWhisperHistory() {
+    const historyList = document.getElementById('whisper-history-list');
+    if (!historyList) return;
+
+    if (currentState.whisperHistory.length === 0) {
+        historyList.innerHTML = '<div class="history-empty">Henüz istek yok</div>';
+        return;
+    }
+
+    historyList.innerHTML = currentState.whisperHistory.map(entry => `
+        <div class="history-item">
+            <div class="history-item-header">
+                <span class="history-file" title="${entry.fileName}">${entry.fileName.length > 15 ? entry.fileName.substring(0, 12) + '...' : entry.fileName}</span>
+                <span class="history-time">${entry.timestamp}</span>
+            </div>
+            <div class="history-item-stats">
+                <span class="history-stat">
+                    <i class="fas fa-clock"></i> ${entry.processingTime.toFixed(1)}s
+                </span>
+                <span class="history-stat">
+                    <i class="fas fa-music"></i> ${formatDuration(entry.audioDuration)}
+                </span>
+                <span class="history-stat rtf ${entry.rtf >= 10 ? 'fast' : entry.rtf >= 5 ? 'medium' : 'slow'}">
+                    <i class="fas fa-bolt"></i> ${entry.rtf.toFixed(1)}x
+                </span>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.clearWhisperHistory = function() {
+    currentState.whisperHistory = [];
+    renderWhisperHistory();
+    showToast('Geçmiş temizlendi', 'success');
+};
 
 window.seekAudioTo = function(seconds) {
     const audioPlayer = document.getElementById('whisper-audio-player');
