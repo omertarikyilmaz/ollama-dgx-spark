@@ -63,10 +63,14 @@ def get_whisper_pipeline(model_name: str = "large-v3-turbo"):
             device_name = torch.cuda.get_device_name(0)
             print(f"CUDA available: {device_name}")
 
-            # Adjust batch size based on GPU memory
+            # Adjust batch size based on GPU memory - aggressive for large GPUs
             gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-            if gpu_mem >= 40:
-                _batch_size = 24
+            if gpu_mem >= 100:      # GB10 Blackwell (128GB)
+                _batch_size = 64
+            elif gpu_mem >= 80:
+                _batch_size = 48
+            elif gpu_mem >= 40:
+                _batch_size = 32
             elif gpu_mem >= 16:
                 _batch_size = 16
             else:
@@ -157,17 +161,21 @@ async def transcribe_audio(
         try:
             pipe = get_whisper_pipeline(model)
 
-            # Build generate_kwargs
-            generate_kwargs = {"task": task}
+            # Build generate_kwargs - optimized for speed
+            generate_kwargs = {
+                "task": task,
+                "num_beams": 1,              # Greedy decoding - faster than beam search
+                "do_sample": False,          # Deterministic output
+            }
             if language:
                 generate_kwargs["language"] = language
 
-            # Run inference with batching for long audio
+            # Run inference with aggressive batching for long audio
             result = pipe(
                 tmp_path,
-                chunk_length_s=30,          # Process in 30-second chunks
-                batch_size=_batch_size,      # Parallel batch processing
-                return_timestamps=True,      # Get word/segment timestamps
+                chunk_length_s=30,           # Process in 30-second chunks
+                batch_size=_batch_size,       # Parallel batch processing (up to 64 on GB10)
+                return_timestamps=True,       # Get word/segment timestamps
                 generate_kwargs=generate_kwargs
             )
 
