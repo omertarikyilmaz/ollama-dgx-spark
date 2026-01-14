@@ -2,10 +2,46 @@
 import os
 import tempfile
 import time
+import soundfile as sf
+import numpy as np
 from fastapi import APIRouter, UploadFile, File, Form
 from models import ParakeetTranscriptionResponse, ParakeetSegment, ParakeetModelInfo
 
 router = APIRouter(tags=["Parakeet"])
+
+# Target sample rate for Parakeet (16kHz mono required)
+TARGET_SAMPLE_RATE = 16000
+
+
+def preprocess_audio(input_path: str) -> tuple[str, float]:
+    """
+    Preprocess audio file for Parakeet:
+    - Convert stereo to mono
+    - Resample to 16kHz
+    - Save as WAV
+    Returns: (processed_file_path, duration_seconds)
+    """
+    # Read audio file
+    audio_data, sample_rate = sf.read(input_path)
+
+    # Convert stereo to mono if needed
+    if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
+        audio_data = np.mean(audio_data, axis=1)
+
+    # Resample to 16kHz if needed
+    if sample_rate != TARGET_SAMPLE_RATE:
+        from scipy import signal
+        num_samples = int(len(audio_data) * TARGET_SAMPLE_RATE / sample_rate)
+        audio_data = signal.resample(audio_data, num_samples)
+        sample_rate = TARGET_SAMPLE_RATE
+
+    # Calculate duration
+    duration = len(audio_data) / sample_rate
+
+    # Save processed audio to temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp:
+        sf.write(tmp.name, audio_data, sample_rate)
+        return tmp.name, duration
 
 # Global parakeet model (lazy loaded)
 _parakeet_model = None
@@ -86,6 +122,9 @@ async def parakeet_transcribe(
             error=f"Desteklenmeyen dosya turu: {file.content_type}. WAV veya FLAC kullanin."
         )
 
+    tmp_path = None
+    processed_path = None
+
     try:
         content = await file.read()
         suffix = os.path.splitext(file.filename)[1] if file.filename else '.wav'
@@ -94,11 +133,14 @@ async def parakeet_transcribe(
             tmp.write(content)
             tmp_path = tmp.name
 
+        # Preprocess audio: convert to mono 16kHz WAV
+        processed_path, duration = preprocess_audio(tmp_path)
+
         try:
             parakeet_model = get_parakeet_model(model)
 
             if timestamps:
-                output = parakeet_model.transcribe([tmp_path], timestamps=True)
+                output = parakeet_model.transcribe([processed_path], timestamps=True)
                 result_text = output[0].text if hasattr(output[0], 'text') else str(output[0])
 
                 segments = []
@@ -119,19 +161,9 @@ async def parakeet_transcribe(
                                 text=word.get('word', '')
                             ))
             else:
-                output = parakeet_model.transcribe([tmp_path])
+                output = parakeet_model.transcribe([processed_path])
                 result_text = output[0] if isinstance(output[0], str) else str(output[0])
                 segments = []
-
-            # Calculate duration from segments or audio file
-            duration = segments[-1].end if segments else 0.0
-            if duration == 0.0:
-                import soundfile as sf
-                try:
-                    audio_info = sf.info(tmp_path)
-                    duration = audio_info.duration
-                except:
-                    pass
 
             processing_time = (time.time() - start_time) * 1000
             processing_time_sec = processing_time / 1000
@@ -149,7 +181,10 @@ async def parakeet_transcribe(
             )
 
         finally:
-            os.unlink(tmp_path)
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            if processed_path and os.path.exists(processed_path):
+                os.unlink(processed_path)
 
     except Exception as e:
         import traceback

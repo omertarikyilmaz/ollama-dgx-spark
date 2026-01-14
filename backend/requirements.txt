@@ -20,3 +20,5 @@ openai-whisper
 # Note: Install order matters - Cython first, then pynini (needs OpenFST), then NeMo
 Cython
 nemo_toolkit[asr]
+scipy
+soundfile
