@@ -43,22 +43,18 @@ import re
 import time
 from PIL import Image
 
-# PaddleOCR - lazy loaded for performance
+# EasyOCR - lazy loaded for performance (ARM compatible)
 _ocr_instance = None
 
 def get_ocr_instance():
-    """Get or create PaddleOCR instance (singleton)"""
+    """Get or create EasyOCR instance (singleton)"""
     global _ocr_instance
     if _ocr_instance is None:
-        from paddleocr import PaddleOCR
-        _ocr_instance = PaddleOCR(
-            use_angle_cls=True,
-            lang='tr',  # Turkish
-            use_gpu=True,
-            show_log=False,
-            det_db_thresh=0.3,
-            det_db_box_thresh=0.5,
-            rec_batch_num=6
+        import easyocr
+        _ocr_instance = easyocr.Reader(
+            ['tr', 'en'],  # Turkish + English
+            gpu=True,
+            verbose=False
         )
     return _ocr_instance
 
@@ -882,7 +878,7 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
 @app.post("/ocr-newspaper", response_model=NewspaperOCRResponse)
 async def ocr_newspaper(file: UploadFile = File(...)):
     """
-    Extract text from newspaper image using PaddleOCR.
+    Extract text from newspaper image using EasyOCR.
     Returns full text and word-level bounding boxes.
     """
     start_time = time.time()
@@ -896,7 +892,7 @@ async def ocr_newspaper(file: UploadFile = File(...)):
         content = await file.read()
         image = Image.open(io.BytesIO(content))
 
-        # Convert to RGB if necessary (PaddleOCR requirement)
+        # Convert to RGB if necessary
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
@@ -905,13 +901,14 @@ async def ocr_newspaper(file: UploadFile = File(...)):
         # Get OCR instance
         ocr = get_ocr_instance()
 
-        # Run OCR - PaddleOCR expects numpy array or file path
+        # Run OCR - EasyOCR expects numpy array
         import numpy as np
         img_array = np.array(image)
 
-        result = ocr.ocr(img_array, cls=True)
+        # EasyOCR returns: [([[x1,y1],[x2,y2],[x3,y3],[x4,y4]], 'text', confidence), ...]
+        result = ocr.readtext(img_array)
 
-        if not result or not result[0]:
+        if not result:
             return NewspaperOCRResponse(
                 success=True,
                 full_text="",
@@ -927,25 +924,21 @@ async def ocr_newspaper(file: UploadFile = File(...)):
         all_text_parts = []
         total_words = 0
 
-        for line_data in result[0]:
-            if not line_data or len(line_data) < 2:
+        for detection in result:
+            if len(detection) < 3:
                 continue
 
-            bbox = line_data[0]  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-            text_info = line_data[1]  # (text, confidence)
+            bbox = detection[0]  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+            text = detection[1]
+            confidence = float(detection[2])
 
-            if not text_info or len(text_info) < 2:
+            if not text.strip():
                 continue
-
-            text = text_info[0]
-            confidence = float(text_info[1])
 
             # Convert bbox to list of lists (ensure serializable)
             bbox_list = [[float(p[0]), float(p[1])] for p in bbox]
 
             # Split text into words for word-level boxes
-            # For now, we use line-level boxes since PaddleOCR returns line-level by default
-            # Word splitting can be approximated
             words_in_line = text.split()
             word_objects = []
 
@@ -1021,6 +1014,6 @@ async def ocr_health():
     """Check if OCR service is ready"""
     try:
         ocr = get_ocr_instance()
-        return {"status": "ready", "engine": "PaddleOCR", "language": "Turkish"}
+        return {"status": "ready", "engine": "EasyOCR", "language": "Turkish + English"}
     except Exception as e:
         return {"status": "error", "message": str(e)}

@@ -10,7 +10,7 @@ xlsxwriter
 xlrd
 beautifulsoup4
 lxml
-# PaddleOCR dependencies
-paddlepaddle-gpu
-paddleocr
+# OCR dependencies (EasyOCR - ARM compatible)
+easyocr
 Pillow
+numpy
