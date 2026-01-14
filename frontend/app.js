@@ -31,7 +31,12 @@ let currentState = {
     whisperFile: null,    // Current audio file
     whisperResult: null,  // Transcription result
     whisperSegmentsExpanded: true,  // Segments panel state
-    whisperHistory: []    // Request history for performance tracking
+    whisperHistory: [],    // Request history for performance tracking
+    // Parakeet State
+    parakeetFile: null,    // Current audio file
+    parakeetResult: null,  // Transcription result
+    parakeetSegmentsExpanded: true,  // Segments panel state
+    parakeetHistory: []    // Request history for performance tracking
 };
 
 // Initial state load
@@ -819,6 +824,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Whisper
     initWhisperListeners();
+
+    // Parakeet
+    initParakeetListeners();
 });
 
 // ============================================
@@ -1885,3 +1893,335 @@ function getLanguageName(code) {
     };
     return langs[code] || code;
 }
+
+// ============================================
+// NVIDIA Parakeet Ultra-Fast STT Service
+// ============================================
+
+function initParakeetListeners() {
+    const fileInput = document.getElementById('parakeet-file-input');
+    const uploadZone = document.getElementById('parakeet-upload-zone');
+    const transcribeBtn = document.getElementById('parakeet-transcribe-btn');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => handleParakeetFileSelect(e.target.files[0]));
+    }
+
+    if (uploadZone) {
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleParakeetFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    if (transcribeBtn) {
+        transcribeBtn.addEventListener('click', parakeetTranscribe);
+    }
+
+    // Check Parakeet health on page load
+    checkParakeetHealth();
+}
+
+async function checkParakeetHealth() {
+    const healthStatus = document.getElementById('parakeet-health-status');
+    if (!healthStatus) return;
+
+    const dot = healthStatus.querySelector('.health-dot');
+    const text = healthStatus.querySelector('.health-text');
+
+    try {
+        const response = await apiCall('/parakeet-health');
+
+        if (response.status === 'ready') {
+            dot.className = 'health-dot online';
+            text.textContent = response.cuda_available
+                ? `GPU: ${response.device}`
+                : 'CPU Modu';
+        } else if (response.status === 'not_installed') {
+            dot.className = 'health-dot offline';
+            text.textContent = 'NeMo yuklu degil';
+        } else {
+            dot.className = 'health-dot offline';
+            text.textContent = response.message || 'Parakeet hazir degil';
+        }
+    } catch (error) {
+        dot.className = 'health-dot offline';
+        text.textContent = 'Baglanti hatasi';
+    }
+}
+
+function handleParakeetFileSelect(file) {
+    if (!file) return;
+
+    // Validate file type - Parakeet prefers WAV/FLAC
+    const validTypes = ['audio/'];
+    if (!validTypes.some(t => file.type.startsWith(t))) {
+        showToast('Desteklenmeyen dosya turu. WAV veya FLAC kullanin.', 'error');
+        return;
+    }
+
+    currentState.parakeetFile = file;
+    currentState.parakeetResult = null;
+
+    // Show audio container
+    const uploadZone = document.getElementById('parakeet-upload-zone');
+    const audioContainer = document.getElementById('parakeet-audio-container');
+    const transcribeBtn = document.getElementById('parakeet-transcribe-btn');
+    const fileName = document.getElementById('parakeet-file-name');
+    const audioPlayer = document.getElementById('parakeet-audio-player');
+
+    uploadZone.style.display = 'none';
+    audioContainer.style.display = 'block';
+    transcribeBtn.disabled = false;
+
+    fileName.textContent = file.name;
+
+    // Create object URL for audio player
+    const audioUrl = URL.createObjectURL(file);
+    audioPlayer.src = audioUrl;
+
+    // Reset results
+    resetParakeetResults();
+
+    showToast('Dosya yuklendi! "Ultra Hizli Transkripsiyon" butonuna tiklayin.', 'success');
+}
+
+window.clearParakeetFile = function() {
+    currentState.parakeetFile = null;
+    currentState.parakeetResult = null;
+
+    const uploadZone = document.getElementById('parakeet-upload-zone');
+    const audioContainer = document.getElementById('parakeet-audio-container');
+    const transcribeBtn = document.getElementById('parakeet-transcribe-btn');
+    const audioPlayer = document.getElementById('parakeet-audio-player');
+    const fileInput = document.getElementById('parakeet-file-input');
+
+    uploadZone.style.display = 'flex';
+    audioContainer.style.display = 'none';
+    transcribeBtn.disabled = true;
+
+    if (audioPlayer.src) {
+        URL.revokeObjectURL(audioPlayer.src);
+        audioPlayer.src = '';
+    }
+
+    fileInput.value = '';
+
+    resetParakeetResults();
+};
+
+function resetParakeetResults() {
+    const textContainer = document.getElementById('parakeet-text-container');
+    const segmentsContainer = document.getElementById('parakeet-segments-container');
+    const exportOptions = document.getElementById('parakeet-export-options');
+    const statsPanel = document.getElementById('parakeet-stats');
+
+    textContainer.innerHTML = `
+        <div class="result-placeholder">
+            <i class="fas fa-bolt" style="color: #76b900;"></i>
+            <p>Henuz transkripsiyon yapilmadi.<br>Sol taraftan ses dosyasi yukleyerek baslayin.</p>
+            <small style="color: var(--text-muted); margin-top: 1rem; display: block;">
+                Whisper'dan ~100x daha hizli!
+            </small>
+        </div>
+    `;
+
+    segmentsContainer.style.display = 'none';
+    exportOptions.style.display = 'none';
+    statsPanel.style.display = 'none';
+}
+
+async function parakeetTranscribe() {
+    if (!currentState.parakeetFile) {
+        showToast('Once bir ses dosyasi yukleyin', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('parakeet-transcribe-btn');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Isleniyor...';
+    btn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('file', currentState.parakeetFile);
+        formData.append('model', document.getElementById('parakeet-model-select').value);
+        formData.append('timestamps', document.getElementById('parakeet-timestamps').checked);
+
+        const response = await fetch(`${API_BASE}/parakeet-transcribe`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentState.parakeetResult = data;
+            displayParakeetResults(data);
+            showToast(`Transkripsiyon tamamlandi! ${data.rtf.toFixed(0)}x hiz!`, 'success');
+        } else {
+            showToast(`Hata: ${data.error}`, 'error');
+        }
+
+    } catch (error) {
+        console.error('Parakeet transcription error:', error);
+        showToast('Transkripsiyon hatasi: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    }
+}
+
+function displayParakeetResults(data) {
+    const textContainer = document.getElementById('parakeet-text-container');
+    const segmentsContainer = document.getElementById('parakeet-segments-container');
+    const segmentsList = document.getElementById('parakeet-segments-list');
+    const exportOptions = document.getElementById('parakeet-export-options');
+    const statsPanel = document.getElementById('parakeet-stats');
+
+    // Calculate RTF
+    const processingTimeSec = data.processing_time_ms / 1000;
+    const rtf = data.rtf || (data.duration / processingTimeSec);
+
+    // Show stats
+    statsPanel.style.display = 'grid';
+    document.getElementById('parakeet-time').textContent = `${processingTimeSec.toFixed(2)}s`;
+    document.getElementById('parakeet-duration').textContent = formatDuration(data.duration);
+    document.getElementById('parakeet-speed').textContent = `${rtf.toFixed(0)}x`;
+    document.getElementById('parakeet-model-used').textContent = data.model_used.split('/').pop();
+
+    // Add to history
+    const historyEntry = {
+        id: Date.now(),
+        fileName: currentState.parakeetFile?.name || 'Dosya',
+        audioDuration: data.duration,
+        processingTime: processingTimeSec,
+        rtf: rtf,
+        model: data.model_used.split('/').pop(),
+        timestamp: new Date().toLocaleTimeString('tr-TR')
+    };
+    currentState.parakeetHistory.unshift(historyEntry);
+    if (currentState.parakeetHistory.length > 20) {
+        currentState.parakeetHistory.pop();
+    }
+    renderParakeetHistory();
+
+    // Display full text
+    textContainer.innerHTML = `
+        <div class="whisper-full-text">
+            <p>${escapeHtml(data.text)}</p>
+        </div>
+    `;
+
+    // Display segments if available
+    if (data.segments && data.segments.length > 0) {
+        segmentsContainer.style.display = 'block';
+        segmentsList.innerHTML = data.segments.map(seg => `
+            <div class="whisper-segment" onclick="seekParakeetAudioTo(${seg.start})">
+                <div class="segment-time">
+                    <span class="start">${formatTime(seg.start)}</span>
+                    <span class="separator">→</span>
+                    <span class="end">${formatTime(seg.end)}</span>
+                </div>
+                <div class="segment-text">${escapeHtml(seg.text)}</div>
+            </div>
+        `).join('');
+    }
+
+    // Show export options
+    exportOptions.style.display = 'flex';
+}
+
+function renderParakeetHistory() {
+    const historyList = document.getElementById('parakeet-history-list');
+    if (!historyList) return;
+
+    if (currentState.parakeetHistory.length === 0) {
+        historyList.innerHTML = '<div class="history-empty">Henuz istek yok</div>';
+        return;
+    }
+
+    historyList.innerHTML = currentState.parakeetHistory.map(entry => `
+        <div class="history-item">
+            <div class="history-item-header">
+                <span class="history-file" title="${entry.fileName}">${entry.fileName.length > 15 ? entry.fileName.substring(0, 12) + '...' : entry.fileName}</span>
+                <span class="history-time">${entry.timestamp}</span>
+            </div>
+            <div class="history-item-stats">
+                <span class="history-stat">
+                    <i class="fas fa-clock"></i> ${entry.processingTime.toFixed(2)}s
+                </span>
+                <span class="history-stat">
+                    <i class="fas fa-music"></i> ${formatDuration(entry.audioDuration)}
+                </span>
+                <span class="history-stat rtf ${entry.rtf >= 100 ? 'ultra-fast' : entry.rtf >= 50 ? 'fast' : 'medium'}">
+                    <i class="fas fa-bolt"></i> ${entry.rtf.toFixed(0)}x
+                </span>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.clearParakeetHistory = function() {
+    currentState.parakeetHistory = [];
+    renderParakeetHistory();
+    showToast('Gecmis temizlendi', 'success');
+};
+
+window.seekParakeetAudioTo = function(seconds) {
+    const audioPlayer = document.getElementById('parakeet-audio-player');
+    if (audioPlayer) {
+        audioPlayer.currentTime = seconds;
+        audioPlayer.play();
+    }
+};
+
+window.toggleParakeetSegmentsView = function() {
+    const segmentsList = document.getElementById('parakeet-segments-list');
+    currentState.parakeetSegmentsExpanded = !currentState.parakeetSegmentsExpanded;
+    segmentsList.style.display = currentState.parakeetSegmentsExpanded ? 'flex' : 'none';
+};
+
+window.copyParakeetText = function() {
+    if (!currentState.parakeetResult) return;
+
+    navigator.clipboard.writeText(currentState.parakeetResult.text).then(() => {
+        showToast('Metin panoya kopyalandi!', 'success');
+    }).catch(() => {
+        showToast('Kopyalama basarisiz', 'error');
+    });
+};
+
+window.downloadParakeetText = function() {
+    if (!currentState.parakeetResult) return;
+
+    const text = currentState.parakeetResult.text;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, 'parakeet_transkripsiyon.txt');
+    showToast('Dosya indirildi!', 'success');
+};
+
+window.downloadParakeetSRT = function() {
+    if (!currentState.parakeetResult || !currentState.parakeetResult.segments) return;
+
+    const segments = currentState.parakeetResult.segments;
+    let srt = '';
+
+    segments.forEach((seg, idx) => {
+        srt += `${idx + 1}\n`;
+        srt += `${formatSRTTime(seg.start)} --> ${formatSRTTime(seg.end)}\n`;
+        srt += `${seg.text}\n\n`;
+    });
+
+    const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, 'parakeet_altyazi.srt');
+    showToast('SRT dosyasi indirildi!', 'success');
+};

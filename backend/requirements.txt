@@ -16,3 +16,7 @@ Pillow
 numpy
 # Whisper Speech-to-Text (OpenAI Whisper with Blackwell GPU support)
 openai-whisper
+# NVIDIA NeMo Parakeet ASR (Ultra-fast speech-to-text)
+nemo_toolkit[asr]
+Cython
+pynini

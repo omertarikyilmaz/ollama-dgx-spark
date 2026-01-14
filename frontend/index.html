@@ -91,6 +91,13 @@
                     <h3>Ses Transkripsiyon</h3>
                     <p>Ses ve video dosyalarını metne dönüştürün. Whisper AI ile yüksek doğrulukta transkripsiyon.</p>
                 </div>
+
+                <!-- Parakeet Ultra-Fast STT -->
+                <div class="service-card" onclick="navigateTo('parakeet')">
+                    <div class="service-icon" style="color: #76b900;"><i class="fas fa-bolt"></i></div>
+                    <h3>Parakeet STT</h3>
+                    <p>NVIDIA Parakeet ile ultra hizli transkripsiyon. Whisper'dan 100x+ daha hizli!</p>
+                </div>
             </div>
         </main>
 
@@ -605,7 +612,147 @@
             </div>
         </div>
 
-        <!-- 9. News (Templates) View - Legacy compatible -->
+        <!-- 9. Parakeet Ultra-Fast STT View -->
+        <div id="view-parakeet" class="service-view">
+            <div class="view-header">
+                <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
+                <div class="view-title">
+                    <h2><i class="fas fa-bolt" style="color: #76b900;"></i> Parakeet Ultra-Hizli STT</h2>
+                    <p>NVIDIA Parakeet ile saniyeler icinde transkripsiyon</p>
+                </div>
+            </div>
+
+            <div class="whisper-layout">
+                <!-- Left Panel: Upload & Controls -->
+                <div class="whisper-control-panel">
+                    <!-- Upload Zone -->
+                    <div class="whisper-upload-zone" id="parakeet-upload-zone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>Ses Dosyasi Yukle</p>
+                        <span>WAV, FLAC (16kHz mono onerilir)</span>
+                        <input type="file" id="parakeet-file-input" accept="audio/wav,audio/flac,audio/*" hidden>
+                        <button class="overlay-btn" onclick="document.getElementById('parakeet-file-input').click()"></button>
+                    </div>
+
+                    <!-- Audio Player -->
+                    <div id="parakeet-audio-container" class="whisper-audio-container" style="display: none;">
+                        <div class="audio-file-info">
+                            <i class="fas fa-file-audio"></i>
+                            <span id="parakeet-file-name">dosya.wav</span>
+                            <button class="btn btn-sm btn-danger" onclick="clearParakeetFile()" title="Kaldir">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <audio id="parakeet-audio-player" controls></audio>
+                    </div>
+
+                    <!-- Model Selection -->
+                    <div class="whisper-options">
+                        <div class="option-group">
+                            <label>Model Secimi</label>
+                            <select id="parakeet-model-select">
+                                <option value="nvidia/parakeet-rnnt-1.1b" selected>Parakeet RNNT 1.1B - Turkce Destekli</option>
+                                <option value="nvidia/parakeet-tdt-0.6b-v2">Parakeet TDT 0.6B - En Hizli (Sadece EN)</option>
+                                <option value="nvidia/parakeet-ctc-1.1b">Parakeet CTC 1.1B - Sadece EN</option>
+                            </select>
+                        </div>
+
+                        <div class="option-group">
+                            <label>
+                                <input type="checkbox" id="parakeet-timestamps" checked>
+                                Zaman Damgalari
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Transcribe Button -->
+                    <button id="parakeet-transcribe-btn" class="btn btn-primary btn-large" style="width: 100%; background: linear-gradient(135deg, #76b900, #5a8f00);" disabled>
+                        <i class="fas fa-bolt"></i> Ultra Hizli Transkripsiyon
+                    </button>
+
+                    <!-- Stats Panel -->
+                    <div id="parakeet-stats" class="whisper-stats" style="display: none;">
+                        <div class="stat-item">
+                            <span class="stat-label">Islem Suresi</span>
+                            <span class="stat-value" id="parakeet-time">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Ses Suresi</span>
+                            <span class="stat-value" id="parakeet-duration">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Hiz (RTF)</span>
+                            <span class="stat-value" id="parakeet-speed">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Model</span>
+                            <span class="stat-value" id="parakeet-model-used">-</span>
+                        </div>
+                    </div>
+
+                    <!-- Request History -->
+                    <div class="whisper-history">
+                        <div class="history-header">
+                            <span><i class="fas fa-history"></i> Istek Gecmisi</span>
+                            <button class="btn btn-sm" onclick="clearParakeetHistory()" title="Temizle">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div id="parakeet-history-list" class="whisper-history-list">
+                            <div class="history-empty">Henuz istek yok</div>
+                        </div>
+                    </div>
+
+                    <!-- Health Status -->
+                    <div id="parakeet-health-status" class="whisper-health">
+                        <span class="health-dot"></span>
+                        <span class="health-text">Kontrol ediliyor...</span>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Results -->
+                <div class="whisper-results-panel">
+                    <!-- Full Text Result -->
+                    <div class="whisper-text-container" id="parakeet-text-container">
+                        <div class="result-placeholder">
+                            <i class="fas fa-bolt" style="color: #76b900;"></i>
+                            <p>Henuz transkripsiyon yapilmadi.<br>Sol taraftan ses dosyasi yukleyerek baslayin.</p>
+                            <small style="color: var(--text-muted); margin-top: 1rem; display: block;">
+                                Whisper'dan ~100x daha hizli!
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Segments Timeline -->
+                    <div id="parakeet-segments-container" class="whisper-segments-container" style="display: none;">
+                        <div class="segments-header">
+                            <h4><i class="fas fa-list-ul"></i> Zaman Damgali Segmentler</h4>
+                            <button class="btn btn-sm" onclick="toggleParakeetSegmentsView()">
+                                <i class="fas fa-compress-alt"></i>
+                            </button>
+                        </div>
+                        <div id="parakeet-segments-list" class="whisper-segments-list">
+                            <!-- Segments will be rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- Export Options -->
+                    <div id="parakeet-export-options" class="whisper-export-options" style="display: none;">
+                        <button class="btn btn-secondary" onclick="copyParakeetText()">
+                            <i class="fas fa-copy"></i> Kopyala
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadParakeetText()">
+                            <i class="fas fa-download"></i> TXT Indir
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadParakeetSRT()">
+                            <i class="fas fa-closed-captioning"></i> SRT Indir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 10. News (Templates) View - Legacy compatible -->
         <div id="view-news" class="service-view">
             <div class="view-header">
                 <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>

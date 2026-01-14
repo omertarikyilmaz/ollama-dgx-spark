@@ -182,3 +182,34 @@ class WhisperModelInfo(BaseModel):
     size: str
     description: str
     recommended: bool = False
+
+
+# ============== NVIDIA Parakeet ASR Models ==============
+
+class ParakeetSegment(BaseModel):
+    """Single transcription segment from Parakeet"""
+    start: float = Field(..., description="Start time in seconds")
+    end: float = Field(..., description="End time in seconds")
+    text: str
+
+
+class ParakeetTranscriptionResponse(BaseModel):
+    """Response from Parakeet transcription"""
+    success: bool
+    text: str = Field(default="", description="Full transcribed text")
+    segments: List[ParakeetSegment] = Field(default_factory=list, description="Segments with timestamps")
+    language: str = Field(default="tr", description="Language code")
+    duration: float = Field(default=0.0, description="Audio duration in seconds")
+    processing_time_ms: float = 0
+    rtf: float = Field(default=0.0, description="Real-time factor (audio_duration / processing_time)")
+    model_used: str = Field(default="", description="Parakeet model used")
+    error: Optional[str] = None
+
+
+class ParakeetModelInfo(BaseModel):
+    """Information about available Parakeet models"""
+    name: str
+    size: str
+    description: str
+    languages: List[str]
+    recommended: bool = False

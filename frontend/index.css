@@ -1711,6 +1711,15 @@ header {
     color: var(--danger);
 }
 
+.history-stat.rtf.ultra-fast {
+    color: #76b900;
+    font-weight: 700;
+}
+
+.history-stat.rtf.ultra-fast i {
+    color: #76b900;
+}
+
 .whisper-results-panel {
     display: flex;
     flex-direction: column;
