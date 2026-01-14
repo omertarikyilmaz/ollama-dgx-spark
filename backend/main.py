@@ -43,20 +43,8 @@ import re
 import time
 from PIL import Image
 
-# EasyOCR - lazy loaded for performance (ARM compatible)
-_ocr_instance = None
-
-def get_ocr_instance():
-    """Get or create EasyOCR instance (singleton)"""
-    global _ocr_instance
-    if _ocr_instance is None:
-        import easyocr
-        _ocr_instance = easyocr.Reader(
-            ['tr', 'en'],  # Turkish + English
-            gpu=True,
-            verbose=False
-        )
-    return _ocr_instance
+# Tesseract OCR - best for Turkish with word-level bbox
+import pytesseract
 
 
 # Data storage paths
@@ -878,8 +866,9 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
 @app.post("/ocr-newspaper", response_model=NewspaperOCRResponse)
 async def ocr_newspaper(file: UploadFile = File(...)):
     """
-    Extract text from newspaper image using EasyOCR.
+    Extract text from newspaper image using Tesseract OCR.
     Returns full text and word-level bounding boxes.
+    Tesseract is optimized for Turkish and provides accurate word-level coordinates.
     """
     start_time = time.time()
 
@@ -898,95 +887,111 @@ async def ocr_newspaper(file: UploadFile = File(...)):
 
         img_width, img_height = image.size
 
-        # Get OCR instance
-        ocr = get_ocr_instance()
+        # Run Tesseract OCR with Turkish language
+        # output_type=pytesseract.Output.DICT returns word-level data with bbox
+        ocr_data = pytesseract.image_to_data(
+            image,
+            lang='tur+eng',  # Turkish + English
+            output_type=pytesseract.Output.DICT,
+            config='--psm 3 --oem 3'  # PSM 3: Auto page segmentation, OEM 3: Default (LSTM)
+        )
 
-        # Run OCR - EasyOCR expects numpy array
-        import numpy as np
-        img_array = np.array(image)
+        # Process Tesseract output
+        # ocr_data contains: level, page_num, block_num, par_num, line_num, word_num, left, top, width, height, conf, text
 
-        # EasyOCR returns: [([[x1,y1],[x2,y2],[x3,y3],[x4,y4]], 'text', confidence), ...]
-        result = ocr.readtext(img_array)
-
-        if not result:
-            return NewspaperOCRResponse(
-                success=True,
-                full_text="",
-                lines=[],
-                word_count=0,
-                processing_time_ms=(time.time() - start_time) * 1000,
-                image_width=img_width,
-                image_height=img_height
-            )
-
-        # Process results
-        lines = []
-        all_text_parts = []
+        # Group words by line
+        lines_dict = {}
         total_words = 0
 
-        for detection in result:
-            if len(detection) < 3:
+        for i in range(len(ocr_data['text'])):
+            # Skip empty text
+            text = ocr_data['text'][i].strip()
+            if not text:
                 continue
 
-            bbox = detection[0]  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-            text = detection[1]
-            confidence = float(detection[2])
+            # Get word-level data
+            level = ocr_data['level'][i]
 
-            if not text.strip():
+            # Only process word level (level 5)
+            if level != 5:
                 continue
 
-            # Convert bbox to list of lists (ensure serializable)
-            bbox_list = [[float(p[0]), float(p[1])] for p in bbox]
+            line_num = ocr_data['line_num'][i]
+            left = float(ocr_data['left'][i])
+            top = float(ocr_data['top'][i])
+            width = float(ocr_data['width'][i])
+            height = float(ocr_data['height'][i])
+            conf = float(ocr_data['conf'][i]) / 100.0  # Convert to 0-1 range
 
-            # Split text into words for word-level boxes
-            words_in_line = text.split()
-            word_objects = []
+            # Create word bbox (4 corners)
+            word_bbox = [
+                [left, top],
+                [left + width, top],
+                [left + width, top + height],
+                [left, top + height]
+            ]
 
-            if len(words_in_line) > 1:
-                # Approximate word positions by dividing bbox horizontally
-                x1, y1 = bbox_list[0]
-                x2, y2 = bbox_list[1]
-                x3, y3 = bbox_list[2]
-                x4, y4 = bbox_list[3]
+            word_obj = OCRWord(
+                text=text,
+                bbox=word_bbox,
+                confidence=max(0.0, min(1.0, conf))  # Clamp to 0-1
+            )
 
-                total_width = x2 - x1
-                char_count = len(text.replace(" ", ""))
+            # Group by line
+            if line_num not in lines_dict:
+                lines_dict[line_num] = []
 
-                current_x = x1
-                for word in words_in_line:
-                    word_width = (len(word) / char_count) * total_width if char_count > 0 else total_width / len(words_in_line)
-                    word_bbox = [
-                        [current_x, y1],
-                        [current_x + word_width, y2],
-                        [current_x + word_width, y3],
-                        [current_x, y4]
-                    ]
-                    word_objects.append(OCRWord(
-                        text=word,
-                        bbox=word_bbox,
-                        confidence=confidence
-                    ))
-                    current_x += word_width + (total_width * 0.02)  # Small gap between words
-            else:
-                word_objects.append(OCRWord(
-                    text=text,
-                    bbox=bbox_list,
-                    confidence=confidence
-                ))
+            lines_dict[line_num].append({
+                'word': word_obj,
+                'left': left,
+                'top': top,
+                'right': left + width,
+                'bottom': top + height
+            })
 
-            total_words += len(word_objects)
+            total_words += 1
+
+        # Build line objects
+        lines = []
+        all_text_parts = []
+
+        for line_num in sorted(lines_dict.keys()):
+            words_data = lines_dict[line_num]
+
+            if not words_data:
+                continue
+
+            # Calculate line bbox (encompassing all words)
+            min_left = min(w['left'] for w in words_data)
+            min_top = min(w['top'] for w in words_data)
+            max_right = max(w['right'] for w in words_data)
+            max_bottom = max(w['bottom'] for w in words_data)
+
+            line_bbox = [
+                [min_left, min_top],
+                [max_right, min_top],
+                [max_right, max_bottom],
+                [min_left, max_bottom]
+            ]
+
+            # Extract words and text
+            words = [w['word'] for w in words_data]
+            line_text = ' '.join(w.text for w in words)
+
+            # Average confidence
+            avg_conf = sum(w.confidence for w in words) / len(words)
 
             lines.append(OCRLine(
-                text=text,
-                bbox=bbox_list,
-                confidence=confidence,
-                words=word_objects
+                text=line_text,
+                bbox=line_bbox,
+                confidence=avg_conf,
+                words=words
             ))
 
-            all_text_parts.append(text)
+            all_text_parts.append(line_text)
 
-        # Sort lines by vertical position (top to bottom, left to right)
-        lines.sort(key=lambda l: (l.bbox[0][1], l.bbox[0][0]))
+        # Sort lines by vertical position (top to bottom)
+        lines.sort(key=lambda l: l.bbox[0][1])
 
         full_text = "\n".join(all_text_parts)
         processing_time = (time.time() - start_time) * 1000
@@ -1002,9 +1007,10 @@ async def ocr_newspaper(file: UploadFile = File(...)):
         )
 
     except Exception as e:
+        import traceback
         return NewspaperOCRResponse(
             success=False,
-            error=str(e),
+            error=str(e) + "\n" + traceback.format_exc(),
             processing_time_ms=(time.time() - start_time) * 1000
         )
 
@@ -1013,7 +1019,18 @@ async def ocr_newspaper(file: UploadFile = File(...)):
 async def ocr_health():
     """Check if OCR service is ready"""
     try:
-        ocr = get_ocr_instance()
-        return {"status": "ready", "engine": "EasyOCR", "language": "Turkish + English"}
+        # Test Tesseract availability
+        version = pytesseract.get_tesseract_version()
+        # Test Turkish language
+        langs = pytesseract.get_languages()
+        has_turkish = 'tur' in langs
+
+        return {
+            "status": "ready",
+            "engine": "Tesseract OCR",
+            "version": str(version),
+            "languages": langs,
+            "turkish_available": has_turkish
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}

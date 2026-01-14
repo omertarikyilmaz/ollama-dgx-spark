@@ -10,7 +10,7 @@ xlsxwriter
 xlrd
 beautifulsoup4
 lxml
-# OCR dependencies (EasyOCR - ARM compatible)
-easyocr
+# OCR dependencies (Tesseract - best for Turkish)
+pytesseract
 Pillow
 numpy
