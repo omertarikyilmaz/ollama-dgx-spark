@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# NVIDIA NGC PyTorch container - ARM64 + CUDA + Blackwell (sm_121) support
+FROM nvcr.io/nvidia/pytorch:25.01-py3
 
 WORKDIR /app
 
@@ -11,11 +12,7 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     ffmpeg \
     libsndfile1 \
-    git \
     && rm -rf /var/lib/apt/lists/*
-
-# Install PyTorch Nightly with CUDA 12.8 (Blackwell sm_120/121 support)
-RUN pip install --pre torch torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
