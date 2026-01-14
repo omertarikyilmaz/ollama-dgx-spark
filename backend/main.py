@@ -1075,6 +1075,15 @@ def get_whisper_model(model_name: str = "turbo"):
 
         print(f"Loading Whisper model '{model_name}' on {_whisper_device}...")
         _whisper_model = whisper.load_model(model_name, device=_whisper_device)
+
+        # torch.compile() for 20-40% speedup (PyTorch 2.0+)
+        if _whisper_device == "cuda":
+            try:
+                _whisper_model = torch.compile(_whisper_model, mode="reduce-overhead")
+                print("torch.compile() enabled - extra 20-40% speed boost!")
+            except Exception as e:
+                print(f"torch.compile() skipped: {e}")
+
         _whisper_model_name = model_name
         print(f"Whisper model '{model_name}' loaded successfully!")
 
