@@ -170,14 +170,11 @@ async def transcribe_audio(
             if language:
                 generate_kwargs["language"] = language
 
-            # Run inference with aggressive batching for long audio
-            # Smaller chunks = more parallelization on large GPUs
-            chunk_size = 10 if _batch_size >= 32 else 30  # 10s chunks for high-memory GPUs
-
+            # Run inference with batching
             result = pipe(
                 tmp_path,
-                chunk_length_s=chunk_size,    # Smaller chunks = more parallel processing
-                batch_size=_batch_size,       # Parallel batch processing (up to 64 on GB10)
+                chunk_length_s=30,            # 30-second chunks (optimal for Whisper)
+                batch_size=_batch_size,       # Parallel batch processing
                 return_timestamps=True,       # Get word/segment timestamps
                 generate_kwargs=generate_kwargs
             )
