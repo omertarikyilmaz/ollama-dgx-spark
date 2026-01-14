@@ -727,13 +727,33 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
     try:
         merged_df, summary = await extract_and_merge_data(files)
         
-        # Do NOT add totals to DataFrame - we'll use Excel formulas instead
-        data_row_count = len(summary)  # Number of data rows (excluding header and totals)
+        # Calculate totals for formula values (needed for Excel compatibility)
+        numeric_cols = summary.select_dtypes(include=['number']).columns.tolist()
+        totals = {col: summary[col].sum() for col in numeric_cols}
+        
+        # Number of data rows (excluding header and totals)
+        data_row_count = len(summary)
+
+        # Standardize Tüm Veriler column order
+        standard_columns = [
+            'S.No', 'Id - Link', 'Mecra', 'Yıl', 'Ay', 'Tarih', 'Basın İçeriği',
+            'Şehir', 'Ana Yayın', 'Yayın', 'Başlık', 'Sayfa', 'Alan', 'Erişim',
+            'Re.Eş. (TRY)', 'Link', 'Tür', 'Kategori', 'Grup Id', 'Markalar',
+            'Kanal', 'Program', 'Saat', 'Süre', 'Dağılım', 'StxCm', 'Mecra_Grup'
+        ]
+        
+        # Create standardized DataFrame with all columns (missing ones will be empty)
+        standardized_df = pd.DataFrame()
+        for col in standard_columns:
+            if col in merged_df.columns:
+                standardized_df[col] = merged_df[col]
+            else:
+                standardized_df[col] = ''  # Empty column if not present
 
         # Create the Excel file
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            merged_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
+            standardized_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
             # Write summary WITHOUT totals row (will add with formulas)
             summary.to_excel(writer, sheet_name='Yönetici Özeti', index=False, startrow=0, startcol=0)
             
@@ -780,20 +800,35 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
                 summary_sheet.write(0, col_num, value, header_format)
             
             # Add Toplam row with SUM FORMULAS (row index = data_row_count + 1 because of header)
-            totals_row = data_row_count + 1  # Excel row (0-indexed for xlsxwriter)
-            last_data_row = data_row_count  # Last data row (1-indexed in formula = data_row_count + 1)
+            totals_row_idx = data_row_count + 1  # Excel row (0-indexed for xlsxwriter)
+            last_data_row = data_row_count + 1  # Last data row number (1-indexed for formula)
             
             # Column A: "Toplam" text
-            summary_sheet.write(totals_row, 0, 'Toplam', totals_text_format)
+            summary_sheet.write(totals_row_idx, 0, 'Toplam', totals_text_format)
             
-            # Column B: SUM formula for Haber Adedi
-            summary_sheet.write_formula(totals_row, 1, f'=SUM(B2:B{last_data_row + 1})', totals_format)
+            # Column B: SUM formula for Haber Adedi (with calculated value for compatibility)
+            summary_sheet.write_formula(
+                totals_row_idx, 1, 
+                f'=SUM(B2:B{last_data_row})', 
+                totals_format,
+                totals.get('Haber Adedi', 0)
+            )
             
             # Column C: SUM formula for Erişim
-            summary_sheet.write_formula(totals_row, 2, f'=SUM(C2:C{last_data_row + 1})', totals_format)
+            summary_sheet.write_formula(
+                totals_row_idx, 2, 
+                f'=SUM(C2:C{last_data_row})', 
+                totals_format,
+                totals.get('Erişim', 0)
+            )
             
             # Column D: SUM formula for Reklam Eşdeğeri
-            summary_sheet.write_formula(totals_row, 3, f'=SUM(D2:D{last_data_row + 1})', totals_format)
+            summary_sheet.write_formula(
+                totals_row_idx, 3, 
+                f'=SUM(D2:D{last_data_row})', 
+                totals_format,
+                totals.get('Reklam Eşdeğeri(TL)', 0)
+            )
             
             # Charts logic - use data rows only (exclude totals)
             # Helper for charts
