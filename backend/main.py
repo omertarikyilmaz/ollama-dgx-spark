@@ -628,7 +628,7 @@ async def extract_and_merge_data(files: List[UploadFile]):
         try:
             df = pd.read_excel(io.BytesIO(content))
             all_dfs.append(df)
-            file.seek(0) # Reset for potential re-use if needed, though usually consumed once
+            await file.seek(0)  # Reset for potential re-use (async in FastAPI)
         except Exception as e:
             print(f"Error reading {file.filename}: {e}")
             continue
@@ -727,18 +727,14 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
     try:
         merged_df, summary = await extract_and_merge_data(files)
         
-        # Add Totals Row for Excel
-        numeric_cols = summary.select_dtypes(include=['number']).columns.tolist()
-        totals = summary[numeric_cols].sum()
-        totals_row = {'Mecra': 'Toplam'}
-        for col in numeric_cols:
-            totals_row[col] = totals[col]
-        summary = pd.concat([summary, pd.DataFrame([totals_row])], ignore_index=True)
+        # Do NOT add totals to DataFrame - we'll use Excel formulas instead
+        data_row_count = len(summary)  # Number of data rows (excluding header and totals)
 
         # Create the Excel file
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             merged_df.to_excel(writer, sheet_name='Tüm Veriler', index=False)
+            # Write summary WITHOUT totals row (will add with formulas)
             summary.to_excel(writer, sheet_name='Yönetici Özeti', index=False, startrow=0, startcol=0)
             
             workbook = writer.book
@@ -752,11 +748,11 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
             
             # Style Configuration
             if layout_type == "modern":
-                header_bg = '#4A90E2' # Blue
+                header_bg = '#4A90E2'  # Blue
                 header_font = 'white'
                 chart_style = 2
-            else: # standard
-                header_bg = '#D7E4BC' # Green-ish
+            else:  # standard
+                header_bg = '#D7E4BC'  # Green-ish
                 header_font = 'black'
                 chart_style = 10
 
@@ -767,27 +763,53 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
                 'border': 1
             })
             
+            totals_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#FFF2CC',  # Light yellow
+                'border': 1,
+                'num_format': '#,##0'
+            })
+            
+            totals_text_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#FFF2CC',
+                'border': 1
+            })
+            
             for col_num, value in enumerate(summary.columns.values):
                 summary_sheet.write(0, col_num, value, header_format)
             
-            # Charts logic
-            data_rows = len(summary) - 1
+            # Add Toplam row with SUM FORMULAS (row index = data_row_count + 1 because of header)
+            totals_row = data_row_count + 1  # Excel row (0-indexed for xlsxwriter)
+            last_data_row = data_row_count  # Last data row (1-indexed in formula = data_row_count + 1)
             
+            # Column A: "Toplam" text
+            summary_sheet.write(totals_row, 0, 'Toplam', totals_text_format)
+            
+            # Column B: SUM formula for Haber Adedi
+            summary_sheet.write_formula(totals_row, 1, f'=SUM(B2:B{last_data_row + 1})', totals_format)
+            
+            # Column C: SUM formula for Erişim
+            summary_sheet.write_formula(totals_row, 2, f'=SUM(C2:C{last_data_row + 1})', totals_format)
+            
+            # Column D: SUM formula for Reklam Eşdeğeri
+            summary_sheet.write_formula(totals_row, 3, f'=SUM(D2:D{last_data_row + 1})', totals_format)
+            
+            # Charts logic - use data rows only (exclude totals)
             # Helper for charts
             def add_pie_chart(col_idx, title, pos_cell, scale=0.75):
                 chart = workbook.add_chart({'type': 'pie'})
                 chart.add_series({
                     'name': title,
-                    'categories': ['Yönetici Özeti', 1, 0, data_rows, 0],
-                    'values': ['Yönetici Özeti', 1, col_idx, data_rows, col_idx],
+                    'categories': ['Yönetici Özeti', 1, 0, data_row_count, 0],
+                    'values': ['Yönetici Özeti', 1, col_idx, data_row_count, col_idx],
                     'data_labels': {'percentage': True, 'category': False},
                 })
                 chart.set_title({'name': title})
                 chart.set_style(chart_style)
                 summary_sheet.insert_chart(pos_cell, chart, {'x_scale': scale, 'y_scale': scale})
 
-            # Charts at Row 10 (A10, E10, L10) as specifically requested by user
-            # User request: Erişim -> E, Reklam -> L
+            # Charts at Row 10 (A10, E10, L10)
             add_pie_chart(1, 'HABER ADEDİ DAĞILIM YÜZDESİ', 'A10')
             
             col_map = {col: i for i, col in enumerate(summary.columns)}
