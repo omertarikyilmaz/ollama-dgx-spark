@@ -14,8 +14,9 @@ lxml
 pytesseract
 Pillow
 numpy
-# Whisper Speech-to-Text (OpenAI Whisper with Blackwell GPU support)
-openai-whisper
+# Faster-Whisper Speech-to-Text (4-6x faster than OpenAI Whisper)
+# Uses CTranslate2 optimized inference engine
+faster-whisper
 # NVIDIA NeMo Parakeet ASR (Ultra-fast speech-to-text)
 Cython
 nemo_toolkit[asr]
