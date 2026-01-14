@@ -29,7 +29,10 @@ from models import (
     SectorClassifyResponse,
     ChatMessage,
     LinkAnalysisRequest,
-    LinkAnalysisResponse
+    LinkAnalysisResponse,
+    NewspaperOCRResponse,
+    OCRLine,
+    OCRWord
 )
 from services.ollama_client import get_ollama_client, OllamaClient
 import langid
@@ -37,6 +40,27 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import httpx
 import re
+import time
+from PIL import Image
+
+# PaddleOCR - lazy loaded for performance
+_ocr_instance = None
+
+def get_ocr_instance():
+    """Get or create PaddleOCR instance (singleton)"""
+    global _ocr_instance
+    if _ocr_instance is None:
+        from paddleocr import PaddleOCR
+        _ocr_instance = PaddleOCR(
+            use_angle_cls=True,
+            lang='tr',  # Turkish
+            use_gpu=True,
+            show_log=False,
+            det_db_thresh=0.3,
+            det_db_box_thresh=0.5,
+            rec_batch_num=6
+        )
+    return _ocr_instance
 
 
 # Data storage paths
@@ -851,3 +875,152 @@ async def generate_report(files: List[UploadFile] = File(...), layout_type: str 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Rapor oluşturulurken hata: {str(e)}")
+
+
+# ============== Newspaper OCR Service ==============
+
+@app.post("/ocr-newspaper", response_model=NewspaperOCRResponse)
+async def ocr_newspaper(file: UploadFile = File(...)):
+    """
+    Extract text from newspaper image using PaddleOCR.
+    Returns full text and word-level bounding boxes.
+    """
+    start_time = time.time()
+
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="Sadece görsel dosyaları destekleniyor (PNG, JPG, JPEG)")
+
+    try:
+        # Read image
+        content = await file.read()
+        image = Image.open(io.BytesIO(content))
+
+        # Convert to RGB if necessary (PaddleOCR requirement)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+
+        img_width, img_height = image.size
+
+        # Get OCR instance
+        ocr = get_ocr_instance()
+
+        # Run OCR - PaddleOCR expects numpy array or file path
+        import numpy as np
+        img_array = np.array(image)
+
+        result = ocr.ocr(img_array, cls=True)
+
+        if not result or not result[0]:
+            return NewspaperOCRResponse(
+                success=True,
+                full_text="",
+                lines=[],
+                word_count=0,
+                processing_time_ms=(time.time() - start_time) * 1000,
+                image_width=img_width,
+                image_height=img_height
+            )
+
+        # Process results
+        lines = []
+        all_text_parts = []
+        total_words = 0
+
+        for line_data in result[0]:
+            if not line_data or len(line_data) < 2:
+                continue
+
+            bbox = line_data[0]  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+            text_info = line_data[1]  # (text, confidence)
+
+            if not text_info or len(text_info) < 2:
+                continue
+
+            text = text_info[0]
+            confidence = float(text_info[1])
+
+            # Convert bbox to list of lists (ensure serializable)
+            bbox_list = [[float(p[0]), float(p[1])] for p in bbox]
+
+            # Split text into words for word-level boxes
+            # For now, we use line-level boxes since PaddleOCR returns line-level by default
+            # Word splitting can be approximated
+            words_in_line = text.split()
+            word_objects = []
+
+            if len(words_in_line) > 1:
+                # Approximate word positions by dividing bbox horizontally
+                x1, y1 = bbox_list[0]
+                x2, y2 = bbox_list[1]
+                x3, y3 = bbox_list[2]
+                x4, y4 = bbox_list[3]
+
+                total_width = x2 - x1
+                char_count = len(text.replace(" ", ""))
+
+                current_x = x1
+                for word in words_in_line:
+                    word_width = (len(word) / char_count) * total_width if char_count > 0 else total_width / len(words_in_line)
+                    word_bbox = [
+                        [current_x, y1],
+                        [current_x + word_width, y2],
+                        [current_x + word_width, y3],
+                        [current_x, y4]
+                    ]
+                    word_objects.append(OCRWord(
+                        text=word,
+                        bbox=word_bbox,
+                        confidence=confidence
+                    ))
+                    current_x += word_width + (total_width * 0.02)  # Small gap between words
+            else:
+                word_objects.append(OCRWord(
+                    text=text,
+                    bbox=bbox_list,
+                    confidence=confidence
+                ))
+
+            total_words += len(word_objects)
+
+            lines.append(OCRLine(
+                text=text,
+                bbox=bbox_list,
+                confidence=confidence,
+                words=word_objects
+            ))
+
+            all_text_parts.append(text)
+
+        # Sort lines by vertical position (top to bottom, left to right)
+        lines.sort(key=lambda l: (l.bbox[0][1], l.bbox[0][0]))
+
+        full_text = "\n".join(all_text_parts)
+        processing_time = (time.time() - start_time) * 1000
+
+        return NewspaperOCRResponse(
+            success=True,
+            full_text=full_text,
+            lines=lines,
+            word_count=total_words,
+            processing_time_ms=processing_time,
+            image_width=img_width,
+            image_height=img_height
+        )
+
+    except Exception as e:
+        return NewspaperOCRResponse(
+            success=False,
+            error=str(e),
+            processing_time_ms=(time.time() - start_time) * 1000
+        )
+
+
+@app.get("/ocr-health")
+async def ocr_health():
+    """Check if OCR service is ready"""
+    try:
+        ocr = get_ocr_instance()
+        return {"status": "ready", "engine": "PaddleOCR", "language": "Turkish"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

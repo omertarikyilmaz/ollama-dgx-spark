@@ -10,3 +10,7 @@ xlsxwriter
 xlrd
 beautifulsoup4
 lxml
+# PaddleOCR dependencies
+paddlepaddle-gpu
+paddleocr
+Pillow

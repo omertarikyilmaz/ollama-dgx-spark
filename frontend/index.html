@@ -82,6 +82,13 @@
                     <h3>Yayın Analizi</h3>
                     <p>Haber sitesi linklerini analiz ederek dil, içerik türü, kapsam ve trafik bilgilerini çıkarın.</p>
                 </div>
+
+                <!-- Gazete OCR -->
+                <div class="service-card" onclick="navigateTo('ocr')">
+                    <div class="service-icon" style="color: #ec4899;"><i class="fas fa-file-image"></i></div>
+                    <h3>Gazete OCR</h3>
+                    <p>Gazete sayfalarını yükleyerek metni otomatik çıkarın, kelime bazlı arama yapın.</p>
+                </div>
             </div>
         </main>
 
@@ -337,7 +344,109 @@
             </div>
         </div>
 
-        <!-- 7. News (Templates) View - Legacy compatible -->
+        <!-- 7. Gazete OCR View -->
+        <div id="view-ocr" class="service-view">
+            <div class="view-header">
+                <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
+                <div class="view-title">
+                    <h2>📰 Gazete OCR</h2>
+                    <p>Gazete görsellerinden metin çıkarın ve arama yapın</p>
+                </div>
+            </div>
+
+            <div class="ocr-layout">
+                <!-- Left Panel: Image Upload & Preview -->
+                <div class="ocr-image-panel">
+                    <div class="ocr-upload-zone" id="ocr-upload-zone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>Gazete Görseli Yükle</p>
+                        <span>PNG, JPG, JPEG</span>
+                        <input type="file" id="ocr-file-input" accept="image/*" hidden>
+                        <button class="overlay-btn" onclick="document.getElementById('ocr-file-input').click()"></button>
+                    </div>
+
+                    <!-- Image Preview with Overlay Canvas -->
+                    <div class="ocr-image-container" id="ocr-image-container" style="display: none;">
+                        <div class="ocr-image-wrapper" id="ocr-image-wrapper">
+                            <img id="ocr-preview-image" alt="Gazete Görseli">
+                            <canvas id="ocr-overlay-canvas"></canvas>
+                        </div>
+                        <div class="ocr-image-controls">
+                            <button class="btn btn-sm" onclick="zoomOCRImage(-0.1)" title="Küçült">
+                                <i class="fas fa-search-minus"></i>
+                            </button>
+                            <span id="ocr-zoom-level">100%</span>
+                            <button class="btn btn-sm" onclick="zoomOCRImage(0.1)" title="Büyüt">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                            <button class="btn btn-sm" onclick="resetOCRZoom()" title="Sıfırla">
+                                <i class="fas fa-expand"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="clearOCRImage()" title="Temizle">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- OCR Action Button -->
+                    <button id="ocr-extract-btn" class="btn btn-primary btn-large" style="width: 100%; margin-top: 1rem; display: none;">
+                        <i class="fas fa-magic"></i> Metni Çıkar
+                    </button>
+
+                    <!-- OCR Stats -->
+                    <div id="ocr-stats" class="ocr-stats" style="display: none;">
+                        <div class="stat-item">
+                            <span class="stat-label">İşlem Süresi</span>
+                            <span class="stat-value" id="ocr-time">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Kelime Sayısı</span>
+                            <span class="stat-value" id="ocr-word-count">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Satır Sayısı</span>
+                            <span class="stat-value" id="ocr-line-count">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Search & Results -->
+                <div class="ocr-results-panel">
+                    <!-- Search Box -->
+                    <div class="ocr-search-box">
+                        <div class="search-input-wrapper">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="ocr-search-input" placeholder="Metin içinde ara..." disabled>
+                            <span id="ocr-search-count" class="search-count"></span>
+                        </div>
+                        <div class="search-nav" id="ocr-search-nav" style="display: none;">
+                            <button class="btn btn-sm" onclick="navigateOCRSearch(-1)"><i class="fas fa-chevron-up"></i></button>
+                            <button class="btn btn-sm" onclick="navigateOCRSearch(1)"><i class="fas fa-chevron-down"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Results Container -->
+                    <div class="ocr-text-container" id="ocr-text-container">
+                        <div class="result-placeholder">
+                            <i class="fas fa-file-image"></i>
+                            <p>Henüz metin çıkarılmadı.<br>Sol taraftan görsel yükleyerek başlayın.</p>
+                        </div>
+                    </div>
+
+                    <!-- Export Options -->
+                    <div id="ocr-export-options" class="ocr-export-options" style="display: none;">
+                        <button class="btn btn-secondary" onclick="copyOCRText()">
+                            <i class="fas fa-copy"></i> Kopyala
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadOCRText()">
+                            <i class="fas fa-download"></i> TXT İndir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. News (Templates) View - Legacy compatible -->
         <div id="view-news" class="service-view">
             <div class="view-header">
                 <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>

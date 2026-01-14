@@ -20,7 +20,13 @@ let currentState = {
     reportPreviewData: null,
     selectedLayout: 'standard', // 'standard' or 'modern'
     charts: {}, // Store Chart.js instances
-    linkAnalysisHistory: [] // Array of link analysis results
+    linkAnalysisHistory: [], // Array of link analysis results
+    // OCR State
+    ocrResult: null,  // OCR result data
+    ocrImage: null,   // Current loaded image
+    ocrZoom: 1.0,     // Current zoom level
+    ocrSearchMatches: [], // Search match indices
+    ocrCurrentMatch: -1   // Current match index for navigation
 };
 
 // Initial state load
@@ -802,6 +808,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (exportLinkBtn) {
         exportLinkBtn.addEventListener('click', exportLinkAnalysis);
     }
+
+    // OCR
+    initOCRListeners();
 });
 
 // ============================================
@@ -977,4 +986,474 @@ async function exportLinkAnalysis() {
             btn.disabled = false;
         }
     }
+}
+
+// ============================================
+// Newspaper OCR Service
+// ============================================
+
+function initOCRListeners() {
+    const fileInput = document.getElementById('ocr-file-input');
+    const uploadZone = document.getElementById('ocr-upload-zone');
+    const extractBtn = document.getElementById('ocr-extract-btn');
+    const searchInput = document.getElementById('ocr-search-input');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => handleOCRFileSelect(e.target.files[0]));
+    }
+
+    if (uploadZone) {
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleOCRFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    if (extractBtn) {
+        extractBtn.addEventListener('click', extractOCRText);
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(performOCRSearch, 300));
+    }
+}
+
+function handleOCRFileSelect(file) {
+    if (!file || !file.type.startsWith('image/')) {
+        showToast('Lütfen geçerli bir görsel dosyası seçin', 'error');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        currentState.ocrImage = e.target.result;
+        currentState.ocrResult = null;
+        currentState.ocrZoom = 1.0;
+        showOCRImagePreview();
+    };
+    reader.readAsDataURL(file);
+}
+
+function showOCRImagePreview() {
+    const uploadZone = document.getElementById('ocr-upload-zone');
+    const imageContainer = document.getElementById('ocr-image-container');
+    const previewImage = document.getElementById('ocr-preview-image');
+    const extractBtn = document.getElementById('ocr-extract-btn');
+    const statsPanel = document.getElementById('ocr-stats');
+    const textContainer = document.getElementById('ocr-text-container');
+    const exportOptions = document.getElementById('ocr-export-options');
+    const searchInput = document.getElementById('ocr-search-input');
+
+    // Hide upload, show image
+    uploadZone.style.display = 'none';
+    imageContainer.style.display = 'flex';
+    extractBtn.style.display = 'block';
+
+    // Reset other panels
+    statsPanel.style.display = 'none';
+    exportOptions.style.display = 'none';
+    searchInput.disabled = true;
+    textContainer.innerHTML = `
+        <div class="result-placeholder">
+            <i class="fas fa-magic"></i>
+            <p>Görsel yüklendi.<br>"Metni Çıkar" butonuna tıklayın.</p>
+        </div>
+    `;
+
+    // Set image
+    previewImage.src = currentState.ocrImage;
+    previewImage.onload = () => {
+        updateOCRZoom();
+    };
+}
+
+async function extractOCRText() {
+    if (!currentState.ocrImage) {
+        showToast('Önce bir görsel yükleyin', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('ocr-extract-btn');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> İşleniyor...';
+    btn.disabled = true;
+
+    try {
+        // Convert base64 to blob
+        const response = await fetch(currentState.ocrImage);
+        const blob = await response.blob();
+
+        // Create FormData
+        const formData = new FormData();
+        formData.append('file', blob, 'newspaper.png');
+
+        // Call API
+        const result = await fetch(`${API_BASE}/ocr-newspaper`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await result.json();
+
+        if (data.success) {
+            currentState.ocrResult = data;
+            displayOCRResults();
+            drawOCRBboxes();
+            showToast('Metin başarıyla çıkarıldı!', 'success');
+        } else {
+            showToast(`OCR hatası: ${data.error}`, 'error');
+        }
+
+    } catch (error) {
+        console.error('OCR error:', error);
+        showToast('OCR işlemi başarısız', 'error');
+    } finally {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    }
+}
+
+function displayOCRResults() {
+    const data = currentState.ocrResult;
+    if (!data) return;
+
+    const textContainer = document.getElementById('ocr-text-container');
+    const statsPanel = document.getElementById('ocr-stats');
+    const exportOptions = document.getElementById('ocr-export-options');
+    const searchInput = document.getElementById('ocr-search-input');
+
+    // Show stats
+    statsPanel.style.display = 'grid';
+    document.getElementById('ocr-time').textContent = `${data.processing_time_ms.toFixed(0)} ms`;
+    document.getElementById('ocr-word-count').textContent = data.word_count;
+    document.getElementById('ocr-line-count').textContent = data.lines.length;
+
+    // Enable search
+    searchInput.disabled = false;
+
+    // Show export options
+    exportOptions.style.display = 'flex';
+
+    // Render lines with word spans
+    textContainer.innerHTML = data.lines.map((line, lineIdx) => {
+        const wordsHtml = line.words.map((word, wordIdx) =>
+            `<span class="ocr-word" data-line="${lineIdx}" data-word="${wordIdx}">${escapeHtml(word.text)}</span>`
+        ).join(' ');
+
+        return `<div class="ocr-line" data-line="${lineIdx}" onclick="highlightOCRLine(${lineIdx})">${wordsHtml}</div>`;
+    }).join('');
+
+    // Add click handlers for words
+    textContainer.querySelectorAll('.ocr-word').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const lineIdx = parseInt(el.dataset.line);
+            const wordIdx = parseInt(el.dataset.word);
+            highlightOCRWord(lineIdx, wordIdx);
+        });
+    });
+}
+
+function drawOCRBboxes(highlightLine = -1, highlightWord = -1) {
+    const canvas = document.getElementById('ocr-overlay-canvas');
+    const img = document.getElementById('ocr-preview-image');
+    const data = currentState.ocrResult;
+
+    if (!canvas || !img || !data) return;
+
+    const ctx = canvas.getContext('2d');
+    const zoom = currentState.ocrZoom;
+
+    // Set canvas size to match image
+    canvas.width = img.naturalWidth * zoom;
+    canvas.height = img.naturalHeight * zoom;
+    canvas.style.width = `${img.naturalWidth * zoom}px`;
+    canvas.style.height = `${img.naturalHeight * zoom}px`;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw all line bboxes
+    data.lines.forEach((line, lineIdx) => {
+        const isHighlighted = lineIdx === highlightLine;
+
+        // Draw line bbox
+        ctx.beginPath();
+        ctx.strokeStyle = isHighlighted ? '#3b82f6' : 'rgba(236, 72, 153, 0.5)';
+        ctx.lineWidth = isHighlighted ? 3 : 1;
+        ctx.fillStyle = isHighlighted ? 'rgba(59, 130, 246, 0.15)' : 'rgba(236, 72, 153, 0.05)';
+
+        const bbox = line.bbox;
+        ctx.moveTo(bbox[0][0] * zoom, bbox[0][1] * zoom);
+        ctx.lineTo(bbox[1][0] * zoom, bbox[1][1] * zoom);
+        ctx.lineTo(bbox[2][0] * zoom, bbox[2][1] * zoom);
+        ctx.lineTo(bbox[3][0] * zoom, bbox[3][1] * zoom);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw word bboxes if line is highlighted
+        if (isHighlighted && highlightWord >= 0 && line.words[highlightWord]) {
+            const wordBbox = line.words[highlightWord].bbox;
+            ctx.beginPath();
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2;
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+            ctx.moveTo(wordBbox[0][0] * zoom, wordBbox[0][1] * zoom);
+            ctx.lineTo(wordBbox[1][0] * zoom, wordBbox[1][1] * zoom);
+            ctx.lineTo(wordBbox[2][0] * zoom, wordBbox[2][1] * zoom);
+            ctx.lineTo(wordBbox[3][0] * zoom, wordBbox[3][1] * zoom);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
+    });
+}
+
+window.highlightOCRLine = function(lineIdx) {
+    // Update text UI
+    document.querySelectorAll('.ocr-line').forEach(el => el.classList.remove('active'));
+    const lineEl = document.querySelector(`.ocr-line[data-line="${lineIdx}"]`);
+    if (lineEl) {
+        lineEl.classList.add('active');
+        lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Draw bboxes with highlight
+    drawOCRBboxes(lineIdx);
+
+    // Scroll image to show the line
+    scrollToOCRBbox(lineIdx);
+};
+
+window.highlightOCRWord = function(lineIdx, wordIdx) {
+    // Highlight in text
+    document.querySelectorAll('.ocr-word').forEach(el => el.classList.remove('current-match'));
+    const wordEl = document.querySelector(`.ocr-word[data-line="${lineIdx}"][data-word="${wordIdx}"]`);
+    if (wordEl) {
+        wordEl.classList.add('current-match');
+    }
+
+    // Draw bboxes with word highlight
+    drawOCRBboxes(lineIdx, wordIdx);
+};
+
+function scrollToOCRBbox(lineIdx) {
+    const data = currentState.ocrResult;
+    if (!data || !data.lines[lineIdx]) return;
+
+    const wrapper = document.getElementById('ocr-image-wrapper');
+    const bbox = data.lines[lineIdx].bbox;
+    const zoom = currentState.ocrZoom;
+
+    // Calculate center of bbox
+    const centerY = ((bbox[0][1] + bbox[2][1]) / 2) * zoom;
+    const centerX = ((bbox[0][0] + bbox[1][0]) / 2) * zoom;
+
+    // Scroll to center the bbox
+    wrapper.scrollTo({
+        top: centerY - wrapper.clientHeight / 2,
+        left: centerX - wrapper.clientWidth / 2,
+        behavior: 'smooth'
+    });
+}
+
+// Zoom functions
+window.zoomOCRImage = function(delta) {
+    currentState.ocrZoom = Math.max(0.25, Math.min(3, currentState.ocrZoom + delta));
+    updateOCRZoom();
+};
+
+window.resetOCRZoom = function() {
+    currentState.ocrZoom = 1.0;
+    updateOCRZoom();
+};
+
+function updateOCRZoom() {
+    const img = document.getElementById('ocr-preview-image');
+    const zoomLabel = document.getElementById('ocr-zoom-level');
+
+    if (img) {
+        img.style.transform = `scale(${currentState.ocrZoom})`;
+    }
+
+    if (zoomLabel) {
+        zoomLabel.textContent = `${Math.round(currentState.ocrZoom * 100)}%`;
+    }
+
+    // Redraw bboxes at new zoom
+    if (currentState.ocrResult) {
+        drawOCRBboxes();
+    }
+}
+
+window.clearOCRImage = function() {
+    currentState.ocrImage = null;
+    currentState.ocrResult = null;
+    currentState.ocrZoom = 1.0;
+    currentState.ocrSearchMatches = [];
+    currentState.ocrCurrentMatch = -1;
+
+    // Reset UI
+    const uploadZone = document.getElementById('ocr-upload-zone');
+    const imageContainer = document.getElementById('ocr-image-container');
+    const extractBtn = document.getElementById('ocr-extract-btn');
+    const statsPanel = document.getElementById('ocr-stats');
+    const textContainer = document.getElementById('ocr-text-container');
+    const exportOptions = document.getElementById('ocr-export-options');
+    const searchInput = document.getElementById('ocr-search-input');
+    const searchCount = document.getElementById('ocr-search-count');
+    const searchNav = document.getElementById('ocr-search-nav');
+
+    uploadZone.style.display = 'flex';
+    imageContainer.style.display = 'none';
+    extractBtn.style.display = 'none';
+    statsPanel.style.display = 'none';
+    exportOptions.style.display = 'none';
+    searchInput.disabled = true;
+    searchInput.value = '';
+    searchCount.textContent = '';
+    searchNav.style.display = 'none';
+
+    textContainer.innerHTML = `
+        <div class="result-placeholder">
+            <i class="fas fa-file-image"></i>
+            <p>Henüz metin çıkarılmadı.<br>Sol taraftan görsel yükleyerek başlayın.</p>
+        </div>
+    `;
+
+    // Clear file input
+    document.getElementById('ocr-file-input').value = '';
+};
+
+// Search functions
+function performOCRSearch() {
+    const searchInput = document.getElementById('ocr-search-input');
+    const searchCount = document.getElementById('ocr-search-count');
+    const searchNav = document.getElementById('ocr-search-nav');
+    const query = searchInput.value.trim().toLowerCase();
+
+    // Reset previous highlights
+    document.querySelectorAll('.ocr-word.search-match').forEach(el => el.classList.remove('search-match', 'current-match'));
+    currentState.ocrSearchMatches = [];
+    currentState.ocrCurrentMatch = -1;
+
+    if (!query || !currentState.ocrResult) {
+        searchCount.textContent = '';
+        searchNav.style.display = 'none';
+        return;
+    }
+
+    // Find matches
+    const data = currentState.ocrResult;
+    data.lines.forEach((line, lineIdx) => {
+        line.words.forEach((word, wordIdx) => {
+            if (word.text.toLowerCase().includes(query)) {
+                currentState.ocrSearchMatches.push({ lineIdx, wordIdx });
+                const wordEl = document.querySelector(`.ocr-word[data-line="${lineIdx}"][data-word="${wordIdx}"]`);
+                if (wordEl) {
+                    wordEl.classList.add('search-match');
+                }
+            }
+        });
+    });
+
+    // Update UI
+    const matchCount = currentState.ocrSearchMatches.length;
+    searchCount.textContent = matchCount > 0 ? `${matchCount} sonuç` : 'Bulunamadı';
+    searchNav.style.display = matchCount > 0 ? 'flex' : 'none';
+
+    // Navigate to first match
+    if (matchCount > 0) {
+        navigateOCRSearch(0, true);
+    }
+}
+
+window.navigateOCRSearch = function(direction, isFirst = false) {
+    const matches = currentState.ocrSearchMatches;
+    if (matches.length === 0) return;
+
+    // Update current index
+    if (isFirst) {
+        currentState.ocrCurrentMatch = 0;
+    } else {
+        currentState.ocrCurrentMatch += direction;
+        if (currentState.ocrCurrentMatch < 0) currentState.ocrCurrentMatch = matches.length - 1;
+        if (currentState.ocrCurrentMatch >= matches.length) currentState.ocrCurrentMatch = 0;
+    }
+
+    // Remove previous current-match
+    document.querySelectorAll('.ocr-word.current-match').forEach(el => el.classList.remove('current-match'));
+
+    // Highlight current match
+    const match = matches[currentState.ocrCurrentMatch];
+    highlightOCRWord(match.lineIdx, match.wordIdx);
+
+    // Scroll text container
+    const wordEl = document.querySelector(`.ocr-word[data-line="${match.lineIdx}"][data-word="${match.wordIdx}"]`);
+    if (wordEl) {
+        wordEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Scroll image
+    scrollToOCRBbox(match.lineIdx);
+
+    // Update count display
+    document.getElementById('ocr-search-count').textContent = `${currentState.ocrCurrentMatch + 1}/${matches.length}`;
+};
+
+// Export functions
+window.copyOCRText = function() {
+    if (!currentState.ocrResult) return;
+
+    const text = currentState.ocrResult.full_text;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Metin panoya kopyalandı!', 'success');
+    }).catch(() => {
+        showToast('Kopyalama başarısız', 'error');
+    });
+};
+
+window.downloadOCRText = function() {
+    if (!currentState.ocrResult) return;
+
+    const text = currentState.ocrResult.full_text;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gazete_metin.txt';
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    showToast('Dosya indirildi!', 'success');
+};
+
+// Helper functions
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }

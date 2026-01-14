@@ -1027,6 +1027,300 @@ header {
     }
 }
 
+/* ============================================
+   Newspaper OCR View
+   ============================================ */
+
+.ocr-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    height: calc(100vh - 180px);
+    overflow: hidden;
+}
+
+.ocr-image-panel {
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ocr-upload-zone {
+    padding: 3rem;
+    background: var(--bg-tertiary);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.ocr-upload-zone:hover {
+    border-color: var(--accent-pink);
+    background: rgba(236, 72, 153, 0.05);
+}
+
+.ocr-upload-zone.dragover {
+    border-color: var(--accent-pink);
+    background: rgba(236, 72, 153, 0.1);
+}
+
+.ocr-upload-zone i {
+    font-size: 3rem;
+    color: var(--accent-pink);
+}
+
+.ocr-upload-zone p {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.ocr-upload-zone span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.ocr-image-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ocr-image-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: auto;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.ocr-image-wrapper img {
+    max-width: none;
+    transform-origin: top left;
+    transition: transform 0.2s ease;
+}
+
+.ocr-image-wrapper canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.ocr-image-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-top: 0.5rem;
+}
+
+.ocr-image-controls .btn-sm {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+#ocr-zoom-level {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 50px;
+    text-align: center;
+}
+
+.ocr-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-top: 1rem;
+}
+
+.ocr-stats .stat-item {
+    text-align: center;
+}
+
+.ocr-stats .stat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.ocr-stats .stat-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--accent-pink);
+}
+
+/* Right Panel - Results */
+.ocr-results-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ocr-search-box {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.search-input-wrapper {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input-wrapper i {
+    position: absolute;
+    left: 1rem;
+    color: var(--text-muted);
+}
+
+.search-input-wrapper input {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: #fff;
+    font-size: 0.9rem;
+    transition: var(--transition);
+}
+
+.search-input-wrapper input:focus {
+    outline: none;
+    border-color: var(--accent-pink);
+}
+
+.search-input-wrapper input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.search-count {
+    position: absolute;
+    right: 1rem;
+    font-size: 0.75rem;
+    color: var(--accent-pink);
+    font-weight: 600;
+}
+
+.search-nav {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.search-nav .btn-sm {
+    padding: 0.5rem;
+}
+
+.ocr-text-container {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.8;
+}
+
+.ocr-text-container .result-placeholder {
+    height: 100%;
+}
+
+.ocr-line {
+    padding: 0.25rem 0.5rem;
+    margin: 0.25rem 0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.ocr-line:hover {
+    background: rgba(236, 72, 153, 0.1);
+}
+
+.ocr-line.highlight {
+    background: rgba(236, 72, 153, 0.2);
+}
+
+.ocr-line.active {
+    background: rgba(236, 72, 153, 0.3);
+    outline: 2px solid var(--accent-pink);
+}
+
+.ocr-word {
+    display: inline;
+}
+
+.ocr-word.search-match {
+    background: var(--accent-pink);
+    color: white;
+    padding: 0.1rem 0.25rem;
+    border-radius: 3px;
+}
+
+.ocr-word.current-match {
+    background: var(--accent-blue);
+    outline: 2px solid white;
+}
+
+.ocr-export-options {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.ocr-export-options .btn {
+    flex: 1;
+}
+
+/* Bbox overlay styles */
+.bbox-highlight {
+    position: absolute;
+    border: 2px solid var(--accent-pink);
+    background: rgba(236, 72, 153, 0.15);
+    pointer-events: none;
+    transition: all 0.2s;
+}
+
+.bbox-highlight.active {
+    border-color: var(--accent-blue);
+    background: rgba(59, 130, 246, 0.25);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
 
@@ -1037,5 +1331,15 @@ header {
 
     .hub-intro h2 {
         font-size: 2.5rem;
+    }
+
+    .ocr-layout {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .ocr-image-panel,
+    .ocr-results-panel {
+        min-height: 400px;
     }
 }

@@ -120,3 +120,32 @@ class LinkAnalysisResponse(BaseModel):
     daily_pageviews: Optional[str] = Field(None, description="Günlük sayfa görüntüleme")
     global_rank: Optional[str] = Field(None, description="Global sıralama (HypeRank)")
     confidence: float
+
+
+# ============== Newspaper OCR Models ==============
+
+class OCRWord(BaseModel):
+    """Single word with bounding box"""
+    text: str
+    bbox: List[List[float]] = Field(..., description="4 corner coordinates [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]")
+    confidence: float
+
+
+class OCRLine(BaseModel):
+    """Single line of text"""
+    text: str
+    bbox: List[List[float]]
+    confidence: float
+    words: List[OCRWord] = []
+
+
+class NewspaperOCRResponse(BaseModel):
+    """Response from newspaper OCR"""
+    success: bool
+    full_text: str = Field(default="", description="Full extracted text")
+    lines: List[OCRLine] = Field(default_factory=list, description="Lines with bounding boxes")
+    word_count: int = 0
+    processing_time_ms: float = 0
+    image_width: int = 0
+    image_height: int = 0
+    error: Optional[str] = None
