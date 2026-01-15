@@ -165,8 +165,49 @@ def parse_vlm_response(response_text: str) -> dict:
     }
 
 
+async def check_and_pull_model(model: str) -> bool:
+    """Check if model exists, pull if not. Returns True if ready."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Check if model exists
+        try:
+            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                model_names = [m.get("name", "") for m in models]
+
+                # Check exact match or partial match
+                if any(model in name or name in model for name in model_names):
+                    return True
+        except:
+            pass
+
+    # Model not found, pull it
+    print(f"Model '{model}' bulunamadi, indiriliyor...")
+    async with httpx.AsyncClient(timeout=1800.0) as client:  # 30 min timeout for large models
+        try:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/pull",
+                json={"name": model, "stream": False}
+            )
+            if response.status_code == 200:
+                print(f"Model '{model}' basariyla indirildi!")
+                return True
+            else:
+                print(f"Model indirme hatasi: {response.text}")
+                return False
+        except Exception as e:
+            print(f"Model indirme hatasi: {e}")
+            return False
+
+
 async def call_vlm(model: str, image_base64: str, prompt: str) -> dict:
-    """Call Ollama VLM API with image"""
+    """Call Ollama VLM API with image. Auto-pulls model if not available."""
+
+    # Ensure model is available
+    model_ready = await check_and_pull_model(model)
+    if not model_ready:
+        raise HTTPException(status_code=503, detail=f"Model '{model}' indirilemedi. Manuel olarak deneyin: ollama pull {model}")
+
     async with httpx.AsyncClient(timeout=300.0) as client:
         response = await client.post(
             f"{OLLAMA_BASE_URL}/api/generate",
