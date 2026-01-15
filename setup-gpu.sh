@@ -68,6 +68,14 @@ echo ""
 
 # 5. Servisleri baslat
 echo -e "${YELLOW}[5/5] MTM AI Hub servisleri baslatiliyor...${NC}"
+
+# Volume'u koru (modeller burada) - ASLA -v kullanma!
+OLLAMA_VOLUME=$(docker volume ls -q | grep ollama_data || true)
+if [ -n "$OLLAMA_VOLUME" ]; then
+    echo -e "${GREEN}Mevcut model volume'u korunuyor: $OLLAMA_VOLUME${NC}"
+fi
+
+# Sadece container'lari durdur, volume'lara dokunma
 docker compose down 2>/dev/null || true
 docker compose up -d
 
