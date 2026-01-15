@@ -53,8 +53,8 @@ router = APIRouter(tags=["VLM"])
 # Ollama base URL
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
-# GX10 128GB LPDDR5x 276GB/s - EXTREME PARALLEL
-PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "128"))
+# GX10 128GB - STABLE PARALLEL (Ollama limit)
+PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "16"))
 DEFAULT_VLM_MODEL = os.getenv("VLM_MODEL", "qwen2.5vl:32b")
 
 # Available VLM models - All Qwen VL models
