@@ -588,6 +588,10 @@ async def analyze_video(
     """
     start_time = time.time()
 
+    # FORCE settings - ignore frontend values
+    frame_interval = 2.0  # Her 2 saniyede 1 kare - SABİT
+    max_frames = 9999     # Tüm video - SABİT
+
     # Use defaults if not specified
     if model is None:
         model = DEFAULT_VLM_MODEL
