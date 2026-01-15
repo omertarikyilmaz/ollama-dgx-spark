@@ -1,8 +1,9 @@
 """
 Vision Language Model (VLM) endpoints for image and video analysis
-Optimized for Qwen2.5-VL and Qwen3-VL on NVIDIA DGX Spark
+Optimized for Qwen3-VL on ASUS Ascent GX10 (Grace Blackwell 128GB)
 """
 import os
+import asyncio
 import base64
 import subprocess
 import tempfile
@@ -12,7 +13,7 @@ import re
 import httpx
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Tuple
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 # Configure logging
@@ -52,37 +53,29 @@ router = APIRouter(tags=["VLM"])
 # Ollama base URL
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
+# Parallel processing config for GX10 (128GB unified memory)
+PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "8"))  # Process 8 frames at once
+DEFAULT_VLM_MODEL = os.getenv("VLM_MODEL", "qwen3-vl:8b")
+
 # Available VLM models
 VLM_MODELS = [
     VLMModelInfo(
-        name="qwen3-vl:4b",
-        size="3.1GB",
-        description="Qwen3-VL 4B - En hizli, 32 dil OCR, Turkce destekli",
+        name="qwen3-vl:8b",
+        size="6GB",
+        description="Qwen3-VL 8B - Kaliteli + Paralel, 32 dil OCR, Logo/Kisi tespiti",
         supports_video=True,
         recommended=True
     ),
     VLMModelInfo(
-        name="qwen3-vl:8b",
-        size="6GB",
-        description="Qwen3-VL 8B - Hizli + Kaliteli, 32 dil OCR",
-        supports_video=True
-    ),
-    VLMModelInfo(
-        name="blaifa/InternVL3_5:4B",
-        size="3.4GB",
-        description="InternVL3.5 4B - Yuksek dogruluk, Turkce test edildi",
+        name="qwen3-vl:4b",
+        size="3.1GB",
+        description="Qwen3-VL 4B - Hizli, 32 dil OCR, Turkce destekli",
         supports_video=True
     ),
     VLMModelInfo(
         name="qwen3-vl:32b",
         size="21GB",
         description="Qwen3-VL 32B - En kaliteli, 256K context",
-        supports_video=True
-    ),
-    VLMModelInfo(
-        name="qwen2.5vl:32b",
-        size="21GB",
-        description="Qwen2.5-VL 32B - Stabil, 29 dil OCR",
         supports_video=True
     ),
 ]
@@ -376,7 +369,7 @@ async def vlm_health():
 @router.post("/analyze-image", response_model=VLMImageAnalysisResponse)
 async def analyze_image(
     file: UploadFile = File(...),
-    model: str = Form("qwen3-vl:4b"),
+    model: str = Form(None),
     analyze_persons: bool = Form(True),
     analyze_logos: bool = Form(True),
     analyze_text: bool = Form(True),
@@ -387,6 +380,10 @@ async def analyze_image(
     Detects persons (with names), logos, and text.
     """
     start_time = time.time()
+
+    # Use default model if not specified
+    if model is None:
+        model = DEFAULT_VLM_MODEL
 
     log_info("=" * 50)
     log_info("GÖRSEL ANALİZİ BAŞLADI")
@@ -488,26 +485,86 @@ async def analyze_image(
         )
 
 
+async def analyze_single_frame(
+    model: str,
+    frame_path: str,
+    timestamp: float,
+    frame_num: int
+) -> Tuple[int, VideoFrame, List[str], List[str]]:
+    """Analyze a single frame - used for parallel processing"""
+    ts_formatted = format_timestamp(timestamp)
+
+    with open(frame_path, 'rb') as f:
+        frame_bytes = f.read()
+
+    frame_base64 = encode_image_to_base64(frame_bytes)
+
+    # Call VLM
+    result = await call_vlm(model, frame_base64, PERSON_LOGO_PROMPT, f"Kare {frame_num}")
+    parsed = parse_vlm_response(result.get("response", ""))
+
+    # Extract persons
+    frame_persons = []
+    person_names = []
+    for p in parsed.get("persons", []):
+        person = DetectedPerson(
+            name=p.get("name", "Bilinmeyen"),
+            title=p.get("title"),
+            confidence=float(p.get("confidence", 0.9))
+        )
+        frame_persons.append(person)
+        person_names.append(person.name)
+
+    # Extract logos
+    frame_logos = []
+    logo_names = []
+    for l in parsed.get("logos", []):
+        logo = DetectedLogo(
+            company=l.get("company", "Bilinmeyen"),
+            confidence=float(l.get("confidence", 0.9))
+        )
+        frame_logos.append(logo)
+        logo_names.append(logo.company)
+
+    video_frame = VideoFrame(
+        timestamp=timestamp,
+        timestamp_formatted=ts_formatted,
+        persons=frame_persons,
+        logos=frame_logos,
+        scene_description=parsed.get("scene_description", "")
+    )
+
+    return frame_num, video_frame, person_names, logo_names
+
+
 @router.post("/analyze-video", response_model=VLMVideoAnalysisResponse)
 async def analyze_video(
     file: UploadFile = File(...),
-    model: str = Form("qwen3-vl:4b"),
+    model: str = Form(None),  # Will use DEFAULT_VLM_MODEL
     frame_interval: float = Form(5.0),
     max_frames: int = Form(50),
+    batch_size: int = Form(None),  # Will use PARALLEL_BATCH_SIZE
     analyze_persons: bool = Form(True),
     analyze_logos: bool = Form(True)
 ):
     """
-    Analyze video using Vision Language Model.
-    Extracts frames at intervals and detects persons/logos with timestamps.
+    Analyze video using Vision Language Model with PARALLEL batch processing.
+    Optimized for ASUS Ascent GX10 (Grace Blackwell 128GB unified memory).
     """
     start_time = time.time()
 
+    # Use defaults if not specified
+    if model is None:
+        model = DEFAULT_VLM_MODEL
+    if batch_size is None:
+        batch_size = PARALLEL_BATCH_SIZE
+
     log_info("=" * 60)
-    log_info("VIDEO ANALİZİ BAŞLADI")
+    log_info("VIDEO ANALİZİ BAŞLADI (PARALEL MOD)")
     log_info("=" * 60)
     log_info(f"Dosya: {file.filename}")
     log_info(f"Model: {model}")
+    log_info(f"Paralel batch boyutu: {batch_size} kare aynı anda")
     log_info(f"Kare aralığı: {frame_interval} saniye")
     log_info(f"Maksimum kare: {max_frames}")
 
@@ -554,83 +611,86 @@ async def analyze_video(
                 error="Video kareleri çıkarılamadı. FFmpeg kurulu olduğundan emin olun."
             )
 
-        # Analyze each frame
+        # Ensure model is loaded before parallel processing
+        log_info("Model yükleniyor (ilk kez)...")
+        await ensure_model_available(model)
+
+        # PARALLEL BATCH PROCESSING
         log_info("-" * 60)
-        log_info("KARE ANALİZİ BAŞLIYOR")
+        log_info(f"PARALEL KARE ANALİZİ ({batch_size} kare aynı anda)")
         log_info("-" * 60)
 
-        video_frames = []
+        video_frames_dict = {}  # Store by frame_num to preserve order
         all_persons = set()
         all_logos = set()
         total_frames = len(frames_data)
+        num_batches = (total_frames + batch_size - 1) // batch_size
 
-        for idx, (timestamp, frame_path) in enumerate(frames_data):
-            frame_num = idx + 1
-            ts_formatted = format_timestamp(timestamp)
+        for batch_idx in range(num_batches):
+            batch_start = batch_idx * batch_size
+            batch_end = min(batch_start + batch_size, total_frames)
+            batch_frames = frames_data[batch_start:batch_end]
 
-            log_progress(frame_num, total_frames, f"Kare {frame_num}/{total_frames} - {ts_formatted}")
+            log_info(f"Batch {batch_idx + 1}/{num_batches}: Kare {batch_start + 1}-{batch_end} işleniyor...")
+            batch_start_time = time.time()
 
-            with open(frame_path, 'rb') as f:
-                frame_bytes = f.read()
+            # Create parallel tasks for this batch
+            tasks = []
+            for i, (timestamp, frame_path) in enumerate(batch_frames):
+                frame_num = batch_start + i + 1
+                task = analyze_single_frame(model, frame_path, timestamp, frame_num)
+                tasks.append(task)
 
-            frame_base64 = encode_image_to_base64(frame_bytes)
+            # Run batch in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Call VLM for this frame
-            frame_start = time.time()
-            result = await call_vlm(model, frame_base64, PERSON_LOGO_PROMPT, f"Kare {frame_num}")
-            frame_duration = time.time() - frame_start
+            # Process results
+            batch_persons = 0
+            batch_logos = 0
+            for result in results:
+                if isinstance(result, Exception):
+                    log_error(f"Kare hatası: {result}")
+                    continue
 
-            parsed = parse_vlm_response(result.get("response", ""))
+                frame_num, video_frame, person_names, logo_names = result
+                video_frames_dict[frame_num] = video_frame
+                all_persons.update(person_names)
+                all_logos.update(logo_names)
+                batch_persons += len(person_names)
+                batch_logos += len(logo_names)
 
-            # Extract persons and logos
-            frame_persons = []
-            for p in parsed.get("persons", []):
-                person = DetectedPerson(
-                    name=p.get("name", "Bilinmeyen"),
-                    title=p.get("title"),
-                    confidence=float(p.get("confidence", 0.8))
-                )
-                frame_persons.append(person)
-                all_persons.add(person.name)
+            batch_duration = time.time() - batch_start_time
+            frames_in_batch = len(batch_frames)
+            per_frame = batch_duration / frames_in_batch if frames_in_batch > 0 else 0
 
-            frame_logos = []
-            for l in parsed.get("logos", []):
-                logo = DetectedLogo(
-                    company=l.get("company", "Bilinmeyen"),
-                    confidence=float(l.get("confidence", 0.8))
-                )
-                frame_logos.append(logo)
-                all_logos.add(logo.company)
+            log_success(f"Batch {batch_idx + 1} tamamlandı: {batch_duration:.1f}s ({per_frame:.1f}s/kare)")
+            log_info(f"  Tespit: {batch_persons} kişi, {batch_logos} logo")
 
-            # Log frame results
-            if frame_persons or frame_logos:
-                log_info(f"  Kare {frame_num} tespitler: {len(frame_persons)} kişi, {len(frame_logos)} logo")
-                for p in frame_persons:
-                    log_info(f"    - Kişi: {p.name}")
-                for l in frame_logos:
-                    log_info(f"    - Logo: {l.company}")
+            # Progress
+            completed = batch_end
+            log_progress(completed, total_frames, f"{completed}/{total_frames} kare tamamlandı")
 
-            video_frames.append(VideoFrame(
-                timestamp=timestamp,
-                timestamp_formatted=ts_formatted,
-                persons=frame_persons,
-                logos=frame_logos,
-                scene_description=parsed.get("scene_description", "")
-            ))
-
-            # Estimate remaining time
+            # ETA
             elapsed = time.time() - start_time
-            avg_per_frame = elapsed / frame_num
-            remaining = avg_per_frame * (total_frames - frame_num)
-            log_info(f"  Tahmini kalan süre: {format_timestamp(remaining)}")
+            if completed > 0:
+                remaining_frames = total_frames - completed
+                remaining_batches = (remaining_frames + batch_size - 1) // batch_size
+                avg_batch_time = elapsed / (batch_idx + 1)
+                eta = remaining_batches * avg_batch_time
+                log_info(f"  Tahmini kalan süre: {format_timestamp(eta)}")
+
+        # Sort frames by frame number
+        video_frames = [video_frames_dict[i] for i in sorted(video_frames_dict.keys())]
 
         processing_time = (time.time() - start_time) * 1000
+        per_frame_avg = (processing_time / 1000) / total_frames if total_frames > 0 else 0
 
         # Final summary
         log_info("=" * 60)
         log_success("VIDEO ANALİZİ TAMAMLANDI")
         log_info("=" * 60)
         log_info(f"Toplam süre: {processing_time/1000:.1f} saniye")
+        log_info(f"Ortalama: {per_frame_avg:.1f} saniye/kare (paralel)")
         log_info(f"Analiz edilen kare: {len(video_frames)}")
         log_info(f"Benzersiz kişi sayısı: {len(all_persons)}")
         for p in sorted(all_persons):
@@ -677,12 +737,16 @@ async def analyze_video(
 async def vlm_chat(
     file: UploadFile = File(...),
     message: str = Form(...),
-    model: str = Form("qwen3-vl:4b")
+    model: str = Form(None)
 ):
     """
     Chat with VLM about an image. Ask any question about the image content.
     """
     start_time = time.time()
+
+    # Use default model if not specified
+    if model is None:
+        model = DEFAULT_VLM_MODEL
 
     log_info("=" * 50)
     log_info("VLM SOHBET BAŞLADI")
