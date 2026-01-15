@@ -2225,3 +2225,484 @@ window.downloadParakeetSRT = function() {
     downloadBlob(blob, 'parakeet_altyazi.srt');
     showToast('SRT dosyasi indirildi!', 'success');
 };
+
+// ============================================
+// Vision Language Model (VLM) Service
+// ============================================
+
+// VLM State
+currentState.vlmFile = null;
+currentState.vlmMode = 'image'; // 'image' or 'video'
+currentState.vlmResult = null;
+
+function initVLMListeners() {
+    const fileInput = document.getElementById('vlm-file-input');
+    const uploadZone = document.getElementById('vlm-upload-zone');
+    const analyzeBtn = document.getElementById('vlm-analyze-btn');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => handleVLMFileSelect(e.target.files[0]));
+    }
+
+    if (uploadZone) {
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleVLMFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    if (analyzeBtn) {
+        analyzeBtn.addEventListener('click', analyzeVLM);
+    }
+
+    // Check VLM health
+    checkVLMHealth();
+}
+
+// Add to DOMContentLoaded
+const originalDOMContentLoaded = document.addEventListener;
+document.addEventListener('DOMContentLoaded', () => {
+    // ... existing code will run ...
+    initVLMListeners();
+});
+
+async function checkVLMHealth() {
+    const healthStatus = document.getElementById('vlm-health-status');
+    if (!healthStatus) return;
+
+    const dot = healthStatus.querySelector('.health-dot');
+    const text = healthStatus.querySelector('.health-text');
+
+    try {
+        const response = await apiCall('/vlm-health');
+
+        if (response.status === 'ready') {
+            dot.className = 'health-dot online';
+            const models = response.vlm_models_available || [];
+            text.textContent = models.length > 0
+                ? `${models.length} VLM model hazir`
+                : 'Model pull gerekli';
+        } else {
+            dot.className = 'health-dot offline';
+            text.textContent = response.message || 'VLM hazir degil';
+        }
+    } catch (error) {
+        dot.className = 'health-dot offline';
+        text.textContent = 'Baglanti hatasi';
+    }
+}
+
+window.switchVLMMode = function(mode) {
+    currentState.vlmMode = mode;
+
+    // Update tabs
+    document.getElementById('vlm-mode-image').classList.toggle('active', mode === 'image');
+    document.getElementById('vlm-mode-video').classList.toggle('active', mode === 'video');
+
+    // Update upload text
+    const uploadText = document.getElementById('vlm-upload-text');
+    const uploadHint = document.getElementById('vlm-upload-hint');
+    const fileInput = document.getElementById('vlm-file-input');
+    const videoOptions = document.getElementById('vlm-video-options');
+
+    if (mode === 'video') {
+        uploadText.textContent = 'Video Yukle';
+        uploadHint.textContent = 'MP4, WEBM, AVI, MOV';
+        fileInput.accept = 'video/mp4,video/webm,video/avi,video/quicktime,video/x-matroska';
+        videoOptions.style.display = 'block';
+    } else {
+        uploadText.textContent = 'Gorsel Yukle';
+        uploadHint.textContent = 'PNG, JPG, JPEG';
+        fileInput.accept = 'image/*';
+        videoOptions.style.display = 'none';
+    }
+
+    // Clear current file if mode changed
+    if (currentState.vlmFile) {
+        clearVLMFile();
+    }
+};
+
+function handleVLMFileSelect(file) {
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+
+    if (!isImage && !isVideo) {
+        showToast('Desteklenmeyen dosya turu. Gorsel veya video yukleyin.', 'error');
+        return;
+    }
+
+    // Auto-switch mode based on file type
+    if (isImage && currentState.vlmMode !== 'image') {
+        switchVLMMode('image');
+    } else if (isVideo && currentState.vlmMode !== 'video') {
+        switchVLMMode('video');
+    }
+
+    currentState.vlmFile = file;
+    currentState.vlmResult = null;
+
+    // Show preview
+    const uploadZone = document.getElementById('vlm-upload-zone');
+    const previewContainer = document.getElementById('vlm-preview-container');
+    const fileName = document.getElementById('vlm-file-name');
+    const previewImage = document.getElementById('vlm-preview-image');
+    const previewVideo = document.getElementById('vlm-preview-video');
+    const analyzeBtn = document.getElementById('vlm-analyze-btn');
+
+    uploadZone.style.display = 'none';
+    previewContainer.style.display = 'block';
+    analyzeBtn.disabled = false;
+
+    fileName.textContent = file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name;
+
+    const fileUrl = URL.createObjectURL(file);
+
+    if (isImage) {
+        previewImage.src = fileUrl;
+        previewImage.style.display = 'block';
+        previewVideo.style.display = 'none';
+    } else {
+        previewVideo.src = fileUrl;
+        previewVideo.style.display = 'block';
+        previewImage.style.display = 'none';
+    }
+
+    // Reset results
+    resetVLMResults();
+
+    showToast('Dosya yuklendi! "Analiz Et" butonuna tiklayin.', 'success');
+}
+
+window.clearVLMFile = function() {
+    currentState.vlmFile = null;
+    currentState.vlmResult = null;
+
+    const uploadZone = document.getElementById('vlm-upload-zone');
+    const previewContainer = document.getElementById('vlm-preview-container');
+    const analyzeBtn = document.getElementById('vlm-analyze-btn');
+    const previewImage = document.getElementById('vlm-preview-image');
+    const previewVideo = document.getElementById('vlm-preview-video');
+    const fileInput = document.getElementById('vlm-file-input');
+
+    uploadZone.style.display = 'flex';
+    previewContainer.style.display = 'none';
+    analyzeBtn.disabled = true;
+
+    if (previewImage.src) {
+        URL.revokeObjectURL(previewImage.src);
+        previewImage.src = '';
+    }
+    if (previewVideo.src) {
+        URL.revokeObjectURL(previewVideo.src);
+        previewVideo.src = '';
+    }
+
+    fileInput.value = '';
+    resetVLMResults();
+};
+
+function resetVLMResults() {
+    const resultsContainer = document.getElementById('vlm-results-container');
+    const timelineContainer = document.getElementById('vlm-timeline-container');
+    const exportOptions = document.getElementById('vlm-export-options');
+    const statsPanel = document.getElementById('vlm-stats');
+
+    resultsContainer.innerHTML = `
+        <div class="result-placeholder">
+            <i class="fas fa-eye" style="color: #8b5cf6;"></i>
+            <p>Henuz analiz yapilmadi.<br>Sol taraftan gorsel veya video yukleyerek baslayin.</p>
+            <small style="color: var(--text-muted); margin-top: 1rem; display: block;">
+                Qwen VLM ile kisi isimleri, sirket logolari ve metinler tespit edilir.
+            </small>
+        </div>
+    `;
+
+    timelineContainer.style.display = 'none';
+    exportOptions.style.display = 'none';
+    statsPanel.style.display = 'none';
+}
+
+async function analyzeVLM() {
+    if (!currentState.vlmFile) {
+        showToast('Once bir dosya yukleyin', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('vlm-analyze-btn');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analiz ediliyor...';
+    btn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('file', currentState.vlmFile);
+        formData.append('model', document.getElementById('vlm-model-select').value);
+        formData.append('analyze_persons', document.getElementById('vlm-analyze-persons').checked);
+        formData.append('analyze_logos', document.getElementById('vlm-analyze-logos').checked);
+        formData.append('analyze_text', document.getElementById('vlm-analyze-text').checked);
+
+        let endpoint = '/analyze-image';
+
+        if (currentState.vlmMode === 'video') {
+            endpoint = '/analyze-video';
+            formData.append('frame_interval', document.getElementById('vlm-frame-interval').value);
+            formData.append('max_frames', document.getElementById('vlm-max-frames').value);
+        }
+
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentState.vlmResult = data;
+
+            if (currentState.vlmMode === 'video') {
+                displayVLMVideoResults(data);
+            } else {
+                displayVLMImageResults(data);
+            }
+
+            showToast('Analiz tamamlandi!', 'success');
+        } else {
+            showToast(`Hata: ${data.error}`, 'error');
+        }
+
+    } catch (error) {
+        console.error('VLM analysis error:', error);
+        showToast('Analiz hatasi: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    }
+}
+
+function displayVLMImageResults(data) {
+    const resultsContainer = document.getElementById('vlm-results-container');
+    const exportOptions = document.getElementById('vlm-export-options');
+    const statsPanel = document.getElementById('vlm-stats');
+
+    // Show stats
+    statsPanel.style.display = 'grid';
+    document.getElementById('vlm-time').textContent = `${(data.processing_time_ms / 1000).toFixed(1)}s`;
+    document.getElementById('vlm-person-count').textContent = data.persons.length;
+    document.getElementById('vlm-logo-count').textContent = data.logos.length;
+    document.getElementById('vlm-model-used').textContent = data.model_used.split(':')[0];
+
+    // Build results HTML
+    let html = '';
+
+    // Scene description
+    if (data.scene_description) {
+        html += `
+            <div class="vlm-result-section">
+                <h4><i class="fas fa-image"></i> Sahne Aciklamasi</h4>
+                <div class="vlm-scene-description">${escapeHtml(data.scene_description)}</div>
+            </div>
+        `;
+    }
+
+    // Persons
+    if (data.persons.length > 0) {
+        html += `
+            <div class="vlm-result-section">
+                <h4><i class="fas fa-user"></i> Tespit Edilen Kisiler <span class="count">${data.persons.length} kisi</span></h4>
+                <div class="vlm-item-list">
+                    ${data.persons.map(p => `
+                        <div class="vlm-item">
+                            <div>
+                                <span class="vlm-item-name">${escapeHtml(p.name)}</span>
+                                ${p.title ? `<span class="vlm-item-title">(${escapeHtml(p.title)})</span>` : ''}
+                            </div>
+                            <span class="vlm-item-confidence">${Math.round(p.confidence * 100)}%</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Logos
+    if (data.logos.length > 0) {
+        html += `
+            <div class="vlm-result-section">
+                <h4><i class="fas fa-building"></i> Tespit Edilen Logolar <span class="count">${data.logos.length} logo</span></h4>
+                <div class="vlm-item-list">
+                    ${data.logos.map(l => `
+                        <div class="vlm-item">
+                            <span class="vlm-item-name">${escapeHtml(l.company)}</span>
+                            <span class="vlm-item-confidence">${Math.round(l.confidence * 100)}%</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Texts
+    if (data.texts && data.texts.length > 0) {
+        html += `
+            <div class="vlm-result-section">
+                <h4><i class="fas fa-font"></i> Okunan Metinler <span class="count">${data.texts.length} metin</span></h4>
+                <div class="vlm-item-list">
+                    ${data.texts.map(t => `
+                        <div class="vlm-item">
+                            <span class="vlm-item-name">${escapeHtml(t.text)}</span>
+                            <span class="vlm-item-confidence">${t.language.toUpperCase()}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    if (!html) {
+        html = `
+            <div class="result-placeholder">
+                <i class="fas fa-search" style="color: var(--text-muted);"></i>
+                <p>Gorselde kisi, logo veya metin tespit edilemedi.</p>
+            </div>
+        `;
+    }
+
+    resultsContainer.innerHTML = html;
+    exportOptions.style.display = 'flex';
+}
+
+function displayVLMVideoResults(data) {
+    const resultsContainer = document.getElementById('vlm-results-container');
+    const timelineContainer = document.getElementById('vlm-timeline-container');
+    const timelineList = document.getElementById('vlm-timeline-list');
+    const exportOptions = document.getElementById('vlm-export-options');
+    const statsPanel = document.getElementById('vlm-stats');
+
+    // Show stats
+    statsPanel.style.display = 'grid';
+    document.getElementById('vlm-time').textContent = `${(data.processing_time_ms / 1000).toFixed(1)}s`;
+    document.getElementById('vlm-person-count').textContent = data.unique_persons.length;
+    document.getElementById('vlm-logo-count').textContent = data.unique_logos.length;
+    document.getElementById('vlm-model-used').textContent = data.model_used.split(':')[0];
+
+    // Summary in results container
+    let summaryHtml = `
+        <div class="vlm-result-section">
+            <h4><i class="fas fa-video"></i> Video Ozeti</h4>
+            <div class="vlm-scene-description">
+                <strong>Sure:</strong> ${formatDuration(data.video_duration)}<br>
+                <strong>Analiz Edilen Kare:</strong> ${data.frames_analyzed}<br>
+                <strong>Benzersiz Kisi:</strong> ${data.unique_persons.length}<br>
+                <strong>Benzersiz Logo:</strong> ${data.unique_logos.length}
+            </div>
+        </div>
+    `;
+
+    // Unique persons
+    if (data.unique_persons.length > 0) {
+        summaryHtml += `
+            <div class="vlm-result-section">
+                <h4><i class="fas fa-users"></i> Tum Kisiler <span class="count">${data.unique_persons.length} kisi</span></h4>
+                <div class="vlm-item-list">
+                    ${data.unique_persons.map(name => `
+                        <div class="vlm-item">
+                            <span class="vlm-item-name">${escapeHtml(name)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Unique logos
+    if (data.unique_logos.length > 0) {
+        summaryHtml += `
+            <div class="vlm-result-section">
+                <h4><i class="fas fa-building"></i> Tum Logolar <span class="count">${data.unique_logos.length} logo</span></h4>
+                <div class="vlm-item-list">
+                    ${data.unique_logos.map(name => `
+                        <div class="vlm-item">
+                            <span class="vlm-item-name">${escapeHtml(name)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    resultsContainer.innerHTML = summaryHtml;
+
+    // Timeline
+    timelineContainer.style.display = 'block';
+    document.getElementById('vlm-unique-persons').textContent = `${data.unique_persons.length} kisi`;
+    document.getElementById('vlm-unique-logos').textContent = `${data.unique_logos.length} logo`;
+
+    timelineList.innerHTML = data.frames.map((frame, idx) => `
+        <div class="timeline-frame" onclick="seekVLMVideo(${frame.timestamp})">
+            <div class="frame-timestamp">${frame.timestamp_formatted}</div>
+            <div class="frame-content">
+                ${frame.persons.length > 0 ? `
+                    <div class="frame-persons">
+                        ${frame.persons.map(p => `<span>${escapeHtml(p.name)}</span>`).join('')}
+                    </div>
+                ` : ''}
+                ${frame.logos.length > 0 ? `
+                    <div class="frame-logos">
+                        ${frame.logos.map(l => `<span>${escapeHtml(l.company)}</span>`).join('')}
+                    </div>
+                ` : ''}
+                ${frame.persons.length === 0 && frame.logos.length === 0 ? `
+                    <span style="color: var(--text-muted); font-size: 0.8rem;">Tespit yok</span>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
+
+    exportOptions.style.display = 'flex';
+}
+
+window.seekVLMVideo = function(seconds) {
+    const videoPlayer = document.getElementById('vlm-preview-video');
+    if (videoPlayer) {
+        videoPlayer.currentTime = seconds;
+        videoPlayer.play();
+    }
+};
+
+window.copyVLMResults = function() {
+    if (!currentState.vlmResult) return;
+
+    const text = JSON.stringify(currentState.vlmResult, null, 2);
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Sonuclar panoya kopyalandi!', 'success');
+    }).catch(() => {
+        showToast('Kopyalama basarisiz', 'error');
+    });
+};
+
+window.downloadVLMJSON = function() {
+    if (!currentState.vlmResult) return;
+
+    const json = JSON.stringify(currentState.vlmResult, null, 2);
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    downloadBlob(blob, 'vlm_analiz_sonucu.json');
+    showToast('JSON dosyasi indirildi!', 'success');
+};
+
+// Initialize VLM listeners when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVLMListeners);
+} else {
+    initVLMListeners();
+}

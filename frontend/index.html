@@ -98,6 +98,13 @@
                     <h3>Parakeet STT</h3>
                     <p>NVIDIA Parakeet ile ultra hizli transkripsiyon. Whisper'dan 100x+ daha hizli!</p>
                 </div>
+
+                <!-- Vision Language Model -->
+                <div class="service-card" onclick="navigateTo('vlm')">
+                    <div class="service-icon" style="color: #8b5cf6;"><i class="fas fa-eye"></i></div>
+                    <h3>Goruntu Analizi</h3>
+                    <p>Qwen VLM ile gorsel/video analizi. Kisi tespiti, logo algilama, OCR ve timestamp.</p>
+                </div>
             </div>
         </main>
 
@@ -753,7 +760,167 @@
             </div>
         </div>
 
-        <!-- 10. News (Templates) View - Legacy compatible -->
+        <!-- 10. Vision Language Model View -->
+        <div id="view-vlm" class="service-view">
+            <div class="view-header">
+                <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>
+                <div class="view-title">
+                    <h2><i class="fas fa-eye" style="color: #8b5cf6;"></i> Goruntu Analizi (VLM)</h2>
+                    <p>Qwen Vision ile gorsel ve video analizi - Kisi, Logo, Metin Tespiti</p>
+                </div>
+            </div>
+
+            <div class="vlm-layout">
+                <!-- Left Panel: Upload & Controls -->
+                <div class="vlm-control-panel">
+                    <!-- Mode Tabs -->
+                    <div class="vlm-mode-tabs">
+                        <button class="mode-tab active" onclick="switchVLMMode('image')" id="vlm-mode-image">
+                            <i class="fas fa-image"></i> Gorsel
+                        </button>
+                        <button class="mode-tab" onclick="switchVLMMode('video')" id="vlm-mode-video">
+                            <i class="fas fa-video"></i> Video
+                        </button>
+                    </div>
+
+                    <!-- Image Upload Zone -->
+                    <div class="vlm-upload-zone" id="vlm-upload-zone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p id="vlm-upload-text">Gorsel veya Video Yukle</p>
+                        <span id="vlm-upload-hint">PNG, JPG, MP4, WEBM, AVI</span>
+                        <input type="file" id="vlm-file-input" accept="image/*,video/mp4,video/webm,video/avi,video/quicktime" hidden>
+                        <button class="overlay-btn" onclick="document.getElementById('vlm-file-input').click()"></button>
+                    </div>
+
+                    <!-- Preview Container -->
+                    <div id="vlm-preview-container" class="vlm-preview-container" style="display: none;">
+                        <div class="preview-header">
+                            <span id="vlm-file-name">dosya.jpg</span>
+                            <button class="btn btn-sm btn-danger" onclick="clearVLMFile()" title="Kaldir">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="vlm-preview-wrapper">
+                            <img id="vlm-preview-image" alt="Onizleme" style="display: none;">
+                            <video id="vlm-preview-video" controls style="display: none;"></video>
+                        </div>
+                    </div>
+
+                    <!-- Model Selection -->
+                    <div class="vlm-options">
+                        <div class="option-group">
+                            <label><i class="fas fa-robot"></i> Model</label>
+                            <select id="vlm-model-select">
+                                <option value="qwen2.5vl:32b" selected>Qwen2.5-VL 32B (Onerilen)</option>
+                                <option value="qwen2.5vl:72b">Qwen2.5-VL 72B (En Iyi)</option>
+                                <option value="qwen2.5vl:7b">Qwen2.5-VL 7B (Hizli)</option>
+                                <option value="qwen3-vl:32b">Qwen3-VL 32B (Yeni)</option>
+                                <option value="qwen3-vl:8b">Qwen3-VL 8B (Hizli+Yeni)</option>
+                            </select>
+                        </div>
+
+                        <!-- Video-specific options -->
+                        <div id="vlm-video-options" style="display: none;">
+                            <div class="option-group">
+                                <label><i class="fas fa-clock"></i> Kare Araligi (saniye)</label>
+                                <input type="number" id="vlm-frame-interval" value="5" min="1" max="60" step="1">
+                            </div>
+                            <div class="option-group">
+                                <label><i class="fas fa-film"></i> Maksimum Kare</label>
+                                <input type="number" id="vlm-max-frames" value="30" min="5" max="100" step="5">
+                            </div>
+                        </div>
+
+                        <!-- Analysis Options -->
+                        <div class="option-group checkboxes">
+                            <label>
+                                <input type="checkbox" id="vlm-analyze-persons" checked>
+                                <i class="fas fa-user"></i> Kisi Tespiti
+                            </label>
+                            <label>
+                                <input type="checkbox" id="vlm-analyze-logos" checked>
+                                <i class="fas fa-building"></i> Logo Tespiti
+                            </label>
+                            <label>
+                                <input type="checkbox" id="vlm-analyze-text" checked>
+                                <i class="fas fa-font"></i> Metin Okuma (OCR)
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Analyze Button -->
+                    <button id="vlm-analyze-btn" class="btn btn-primary btn-large" style="width: 100%; background: linear-gradient(135deg, #8b5cf6, #6366f1);" disabled>
+                        <i class="fas fa-magic"></i> Analiz Et
+                    </button>
+
+                    <!-- Stats Panel -->
+                    <div id="vlm-stats" class="vlm-stats" style="display: none;">
+                        <div class="stat-item">
+                            <span class="stat-label">Islem Suresi</span>
+                            <span class="stat-value" id="vlm-time">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Kisi Sayisi</span>
+                            <span class="stat-value" id="vlm-person-count">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Logo Sayisi</span>
+                            <span class="stat-value" id="vlm-logo-count">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Model</span>
+                            <span class="stat-value" id="vlm-model-used">-</span>
+                        </div>
+                    </div>
+
+                    <!-- Health Status -->
+                    <div id="vlm-health-status" class="whisper-health">
+                        <span class="health-dot"></span>
+                        <span class="health-text">Kontrol ediliyor...</span>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Results -->
+                <div class="vlm-results-panel">
+                    <!-- Results Container -->
+                    <div class="vlm-results-container" id="vlm-results-container">
+                        <div class="result-placeholder">
+                            <i class="fas fa-eye" style="color: #8b5cf6;"></i>
+                            <p>Henuz analiz yapilmadi.<br>Sol taraftan gorsel veya video yukleyerek baslayin.</p>
+                            <small style="color: var(--text-muted); margin-top: 1rem; display: block;">
+                                Qwen VLM ile kisi isimleri, sirket logolari ve metinler tespit edilir.
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Video Timeline (for video analysis) -->
+                    <div id="vlm-timeline-container" class="vlm-timeline-container" style="display: none;">
+                        <div class="timeline-header">
+                            <h4><i class="fas fa-stream"></i> Video Zaman Cigisi</h4>
+                            <div class="timeline-summary">
+                                <span id="vlm-unique-persons">0 kisi</span>
+                                <span id="vlm-unique-logos">0 logo</span>
+                            </div>
+                        </div>
+                        <div id="vlm-timeline-list" class="vlm-timeline-list">
+                            <!-- Timeline frames will be rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- Export Options -->
+                    <div id="vlm-export-options" class="vlm-export-options" style="display: none;">
+                        <button class="btn btn-secondary" onclick="copyVLMResults()">
+                            <i class="fas fa-copy"></i> Kopyala
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadVLMJSON()">
+                            <i class="fas fa-download"></i> JSON Indir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 11. News (Templates) View - Legacy compatible -->
         <div id="view-news" class="service-view">
             <div class="view-header">
                 <button class="back-btn" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Geri</button>

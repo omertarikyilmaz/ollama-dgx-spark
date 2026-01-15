@@ -213,3 +213,97 @@ class ParakeetModelInfo(BaseModel):
     description: str
     languages: List[str]
     recommended: bool = False
+
+
+# ============== Vision Language Model (VLM) Models ==============
+
+class BoundingBox(BaseModel):
+    """Bounding box coordinates"""
+    x1: float = Field(..., description="Left coordinate (0-1 normalized)")
+    y1: float = Field(..., description="Top coordinate (0-1 normalized)")
+    x2: float = Field(..., description="Right coordinate (0-1 normalized)")
+    y2: float = Field(..., description="Bottom coordinate (0-1 normalized)")
+
+
+class DetectedPerson(BaseModel):
+    """Detected person with name and location"""
+    name: str = Field(..., description="Person name (from caption/text in image)")
+    title: Optional[str] = Field(None, description="Title or role if visible")
+    bbox: Optional[BoundingBox] = None
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class DetectedLogo(BaseModel):
+    """Detected company logo"""
+    company: str = Field(..., description="Company name")
+    bbox: Optional[BoundingBox] = None
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class DetectedText(BaseModel):
+    """Detected text region"""
+    text: str
+    bbox: Optional[BoundingBox] = None
+    language: str = "tr"
+
+
+class VLMAnalysisRequest(BaseModel):
+    """Request for VLM image analysis"""
+    model: str = Field(default="qwen2.5vl:32b", description="VLM model to use")
+    analyze_persons: bool = Field(default=True, description="Detect persons and read names")
+    analyze_logos: bool = Field(default=True, description="Detect company logos")
+    analyze_text: bool = Field(default=True, description="Extract visible text (OCR)")
+    custom_prompt: Optional[str] = Field(None, description="Custom analysis prompt")
+
+
+class VLMImageAnalysisResponse(BaseModel):
+    """Response from VLM image analysis"""
+    success: bool
+    persons: List[DetectedPerson] = Field(default_factory=list)
+    logos: List[DetectedLogo] = Field(default_factory=list)
+    texts: List[DetectedText] = Field(default_factory=list)
+    scene_description: str = Field(default="", description="Overall scene description")
+    raw_response: Optional[str] = Field(None, description="Raw model response")
+    processing_time_ms: float = 0
+    model_used: str = ""
+    error: Optional[str] = None
+
+
+class VideoFrame(BaseModel):
+    """Single video frame analysis result"""
+    timestamp: float = Field(..., description="Frame timestamp in seconds")
+    timestamp_formatted: str = Field(..., description="Formatted timestamp (HH:MM:SS)")
+    persons: List[DetectedPerson] = Field(default_factory=list)
+    logos: List[DetectedLogo] = Field(default_factory=list)
+    scene_description: str = ""
+
+
+class VLMVideoAnalysisRequest(BaseModel):
+    """Request for VLM video analysis"""
+    model: str = Field(default="qwen2.5vl:32b", description="VLM model to use")
+    frame_interval: float = Field(default=5.0, description="Analyze every N seconds")
+    max_frames: int = Field(default=50, description="Maximum frames to analyze")
+    analyze_persons: bool = True
+    analyze_logos: bool = True
+
+
+class VLMVideoAnalysisResponse(BaseModel):
+    """Response from VLM video analysis"""
+    success: bool
+    frames: List[VideoFrame] = Field(default_factory=list)
+    unique_persons: List[str] = Field(default_factory=list, description="All unique persons found")
+    unique_logos: List[str] = Field(default_factory=list, description="All unique logos found")
+    video_duration: float = 0
+    frames_analyzed: int = 0
+    processing_time_ms: float = 0
+    model_used: str = ""
+    error: Optional[str] = None
+
+
+class VLMModelInfo(BaseModel):
+    """Information about available VLM models"""
+    name: str
+    size: str
+    description: str
+    supports_video: bool = True
+    recommended: bool = False

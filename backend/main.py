@@ -13,7 +13,7 @@ from services.ollama_client import get_ollama_client
 from core.config import load_templates, load_settings, save_settings
 
 # Import routers
-from routers import health, templates, classification, chat, language, sector, link_analysis, reports, ocr, whisper, parakeet
+from routers import health, templates, classification, chat, language, sector, link_analysis, reports, ocr, whisper, parakeet, vlm
 
 # Global state
 app_templates: Dict[str, PromptTemplate] = {}
@@ -66,6 +66,7 @@ app.include_router(reports.router)
 app.include_router(ocr.router)
 app.include_router(whisper.router)
 app.include_router(parakeet.router)
+app.include_router(vlm.router)
 
 
 # Settings endpoints (kept here for simplicity)
