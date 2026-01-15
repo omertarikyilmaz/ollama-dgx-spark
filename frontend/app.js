@@ -2386,38 +2386,11 @@ window.switchVLMMode = function(mode) {
 };
 
 function calculateOptimalVideoSettings(durationSeconds) {
-    /**
-     * Calculate optimal frame interval and max frames based on video duration.
-     * Based on research:
-     * - Moments Lab: uniform sampling works best for diverse videos
-     * - Scene Detection Paper: adaptive thresholding for short, interval for long
-     * - Qwen2.5-VL: supports dynamic FPS, can handle various rates
-     */
-    let frameInterval, maxFrames;
-
-    if (durationSeconds <= 120) {
-        // Short videos (< 2 min): dense sampling
-        frameInterval = 2;
-        maxFrames = Math.min(40, Math.ceil(durationSeconds / 2));
-    } else if (durationSeconds <= 600) {
-        // Medium videos (2-10 min): balanced
-        frameInterval = 5;
-        maxFrames = Math.min(60, Math.ceil(durationSeconds / 5));
-    } else if (durationSeconds <= 1800) {
-        // Long videos (10-30 min): sparser sampling
-        frameInterval = 10;
-        maxFrames = Math.min(100, Math.ceil(durationSeconds / 10));
-    } else if (durationSeconds <= 3600) {
-        // Very long videos (30-60 min)
-        frameInterval = 15;
-        maxFrames = Math.min(120, Math.ceil(durationSeconds / 15));
-    } else {
-        // Ultra long videos (60+ min)
-        frameInterval = 20;
-        maxFrames = Math.min(150, Math.ceil(durationSeconds / 20));
-    }
-
-    return { frameInterval, maxFrames };
+    // GX10: Her zaman 2 saniyede 1 kare, tüm video
+    return {
+        frameInterval: 2,
+        maxFrames: 9999  // Limit yok, tüm video
+    };
 }
 
 function handleVLMFileSelect(file) {
