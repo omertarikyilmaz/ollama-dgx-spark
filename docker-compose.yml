@@ -3,11 +3,13 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
+    runtime: nvidia
     ports:
       - "11435:11434"
     volumes:
       - ollama_data:/root/.ollama
     environment:
+      - NVIDIA_VISIBLE_DEVICES=all
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
