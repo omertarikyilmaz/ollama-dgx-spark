@@ -572,8 +572,8 @@ async def analyze_single_frame(
 async def analyze_video(
     file: UploadFile = File(...),
     model: str = Form(None),  # Will use DEFAULT_VLM_MODEL
-    frame_interval: float = Form(5.0),
-    max_frames: int = Form(50),
+    frame_interval: float = Form(3.0),  # Her 3 saniyede bir kare
+    max_frames: int = Form(9999),  # Tum videoyu isle
     batch_size: int = Form(None),  # Will use PARALLEL_BATCH_SIZE
     analyze_persons: bool = Form(True),
     analyze_logos: bool = Form(True)
