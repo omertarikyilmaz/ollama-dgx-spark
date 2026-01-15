@@ -110,18 +110,18 @@ VLM_MODELS = [
 PERSON_LOGO_PROMPT = """Bu bir Türk haber kanalı görüntüsü. Analiz et ve JSON döndür.
 
 GÖREVLER:
-1. KİŞİLER: Ekrandaki tüm kişileri bul. Alt yazıda (lower third/chyron) isim varsa oku ve eşleştir.
+1. KİŞİLER: SADECE ismini okuyabildiğin kişileri ekle. Alt yazıda (lower third/chyron) isim varsa oku.
 2. LOGOLAR: Kanal logosu ve diğer şirket/kurum logolarını tespit et.
 3. METİNLER: Haber başlığı, alt yazılar, ekrandaki tüm Türkçe metinleri oku.
 
 JSON FORMAT:
-{"persons":[{"name":"Ahmet Yılmaz","title":"Ekonomist"}],"logos":[{"company":"TRT"},{"company":"CNN Türk"}],"texts":["Haber başlığı buraya"],"scene":"Stüdyoda sunucu konuşuyor"}
+{"persons":[{"name":"Ahmet Yılmaz","title":"Ekonomist"}],"logos":[{"company":"TRT"}],"texts":["Haber başlığı"],"scene":"Kısa açıklama"}
 
 KURALLAR:
-- İsim okunamıyorsa "Bilinmeyen Kişi 1", "Bilinmeyen Kişi 2" yaz
+- İsmini okuyamadığın kişileri EKLEME (Bilinmeyen Kişi yazma)
+- Sadece ekranda ismini gördüğün kişileri yaz
 - Logo görüyorsan mutlaka ekle
-- Tüm metinleri Türkçe doğru oku
-- Boş array kullanma, tespit yoksa o alanı koy ama boş bırak"""
+- Türkçe karakterleri doğru oku"""
 
 
 def encode_image_to_base64(image_bytes: bytes) -> str:
@@ -534,12 +534,16 @@ async def analyze_single_frame(
     result = await call_vlm(model, frame_base64, PERSON_LOGO_PROMPT, f"Kare {frame_num}")
     parsed = parse_vlm_response(result.get("response", ""))
 
-    # Extract persons
+    # Extract persons - skip unknown/unidentified
     frame_persons = []
     person_names = []
     for p in parsed.get("persons", []):
+        name = p.get("name", "")
+        # Skip if name is empty or contains "bilinmeyen/unknown"
+        if not name or "bilinmeyen" in name.lower() or "unknown" in name.lower():
+            continue
         person = DetectedPerson(
-            name=p.get("name", "Bilinmeyen"),
+            name=name,
             title=p.get("title"),
             confidence=float(p.get("confidence", 0.9))
         )
@@ -572,7 +576,7 @@ async def analyze_single_frame(
 async def analyze_video(
     file: UploadFile = File(...),
     model: str = Form(None),  # Will use DEFAULT_VLM_MODEL
-    frame_interval: float = Form(3.0),  # Her 3 saniyede bir kare
+    frame_interval: float = Form(2.0),  # Her 2 saniyede bir kare
     max_frames: int = Form(9999),  # Tum videoyu isle
     batch_size: int = Form(None),  # Will use PARALLEL_BATCH_SIZE
     analyze_persons: bool = Form(True),
