@@ -53,9 +53,9 @@ router = APIRouter(tags=["VLM"])
 # Ollama base URL
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
-# Parallel processing config for GX10 (128GB unified memory)
-# 32B model = ~21GB, 128GB memory = 4 parallel requests comfortably
-PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "4"))
+# GX10 128GB FULL POWER - 10 parallel requests
+# 32B model (~21GB) + 10 contexts (~50GB) = ~71GB / 128GB
+PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "10"))
 DEFAULT_VLM_MODEL = os.getenv("VLM_MODEL", "qwen3-vl:32b")
 
 # Available VLM models
