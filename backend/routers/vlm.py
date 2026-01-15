@@ -88,33 +88,16 @@ VLM_MODELS = [
 ]
 
 # System prompts for analysis
-PERSON_LOGO_PROMPT = """Sen bir görüntü analiz uzmanısın. Bu görüntüyü analiz et ve şunları bul:
+PERSON_LOGO_PROMPT = """Haber görüntüsünü analiz et.
 
-1. **Kişiler**: Görüntüdeki kişileri tespit et. Eğer isim etiketi, alt yazı veya metin ile isimleri belirtilmişse oku.
-2. **Logolar**: Şirket veya kurum logolarını tespit et ve hangi şirkete ait olduğunu belirle.
-3. **Metin**: Görüntüdeki önemli metinleri (başlıklar, alt yazılar, tabelalar) oku.
+ÖNCELİKLE ekranın alt kısmındaki HABER BANTLARINI (lower third/chyron) oku. Orada kişi isimleri ve unvanları yazar.
 
-JSON formatında yanıt ver:
-```json
-{
-    "persons": [
-        {"name": "Kişi Adı", "title": "Unvan (varsa)", "confidence": 0.95}
-    ],
-    "logos": [
-        {"company": "Şirket Adı", "confidence": 0.9}
-    ],
-    "texts": [
-        {"text": "Okunan metin", "language": "tr"}
-    ],
-    "scene_description": "Sahnenin kısa açıklaması"
-}
-```
+KURAL: Ekranda bir kişi görüyorsan VE alt bantta isim yazıyorsa, o isim o kişiye aittir.
 
-Önemli kurallar:
-- Sadece görüntüde gerçekten gördüklerini raporla
-- Eğer isim okunamıyorsa "Bilinmeyen Kişi" yaz
-- Güven skorları 0-1 arası olmalı
-- Türkçe karakterleri doğru kullan"""
+JSON ver:
+{"persons":[{"name":"İSİM","title":"UNVAN"}],"logos":[{"company":"ŞİRKET"}],"scene":"KISA AÇIKLAMA"}
+
+Sadece gerçekten okuduklarını yaz. Alt bantta isim yoksa kişiyi ekleme."""
 
 
 def encode_image_to_base64(image_bytes: bytes) -> str:
@@ -192,7 +175,18 @@ def parse_vlm_response(response_text: str) -> dict:
 
     if json_match:
         try:
-            return json.loads(json_match.group())
+            data = json.loads(json_match.group())
+            # Normalize field names (scene vs scene_description)
+            if "scene" in data and "scene_description" not in data:
+                data["scene_description"] = data["scene"]
+            # Add default confidence if missing
+            for p in data.get("persons", []):
+                if "confidence" not in p:
+                    p["confidence"] = 0.9
+            for l in data.get("logos", []):
+                if "confidence" not in l:
+                    l["confidence"] = 0.9
+            return data
         except json.JSONDecodeError:
             pass
 
@@ -302,8 +296,9 @@ async def call_vlm(model: str, image_base64: str, prompt: str, frame_info: str =
                 "images": [image_base64],
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,
-                    "num_ctx": 8192
+                    "temperature": 0,
+                    "num_ctx": 4096,
+                    "num_predict": 256,  # Kısa yanıt = hızlı
                 }
             }
         )
