@@ -811,11 +811,11 @@
                         <div class="option-group">
                             <label><i class="fas fa-robot"></i> Model</label>
                             <select id="vlm-model-select">
-                                <option value="qwen3-vl:8b" selected>Qwen3-VL 8B (Hizli + Turkce)</option>
-                                <option value="qwen3-vl:32b">Qwen3-VL 32B (Kaliteli)</option>
+                                <option value="qwen3-vl:4b" selected>Qwen3-VL 4B (En Hizli + Turkce)</option>
+                                <option value="qwen3-vl:8b">Qwen3-VL 8B (Dengeli)</option>
+                                <option value="blaifa/InternVL3_5:4B">InternVL3.5 4B (Yuksek Dogruluk)</option>
+                                <option value="qwen3-vl:32b">Qwen3-VL 32B (En Kaliteli)</option>
                                 <option value="qwen2.5vl:32b">Qwen2.5-VL 32B (Stabil)</option>
-                                <option value="qwen2.5vl:72b">Qwen2.5-VL 72B (En Iyi)</option>
-                                <option value="qwen2.5vl:7b">Qwen2.5-VL 7B (Eski Hizli)</option>
                             </select>
                         </div>
 
@@ -880,6 +880,23 @@
                     <div id="vlm-health-status" class="whisper-health">
                         <span class="health-dot"></span>
                         <span class="health-text">Kontrol ediliyor...</span>
+                    </div>
+
+                    <!-- Detailed Log Panel -->
+                    <div id="vlm-log-panel" class="vlm-log-panel" style="display: none;">
+                        <div class="log-header">
+                            <span><i class="fas fa-terminal"></i> Islem Detayi</span>
+                            <button class="btn btn-sm" onclick="toggleVLMLogPanel()" title="Kapat">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div id="vlm-log-content" class="vlm-log-content">
+                            <!-- Log entries will be added here -->
+                        </div>
+                        <div id="vlm-progress-bar" class="vlm-progress-bar" style="display: none;">
+                            <div class="progress-fill" id="vlm-progress-fill"></div>
+                            <span class="progress-text" id="vlm-progress-text">0%</span>
+                        </div>
                     </div>
                 </div>
 

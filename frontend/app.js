@@ -2234,6 +2234,60 @@ window.downloadParakeetSRT = function() {
 currentState.vlmFile = null;
 currentState.vlmMode = 'image'; // 'image' or 'video'
 currentState.vlmResult = null;
+currentState.vlmLogVisible = true;
+
+// VLM Logging functions
+function vlmLog(message, type = 'info') {
+    const logPanel = document.getElementById('vlm-log-panel');
+    const logContent = document.getElementById('vlm-log-content');
+
+    if (!logPanel || !logContent) return;
+
+    // Show panel
+    logPanel.style.display = 'block';
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const entry = document.createElement('div');
+    entry.className = `vlm-log-entry log-${type}`;
+    entry.innerHTML = `
+        <span class="log-time">${timeStr}</span>
+        <span class="log-message">${message}</span>
+    `;
+
+    logContent.appendChild(entry);
+    logContent.scrollTop = logContent.scrollHeight;
+}
+
+function vlmClearLog() {
+    const logContent = document.getElementById('vlm-log-content');
+    if (logContent) logContent.innerHTML = '';
+}
+
+function vlmSetProgress(percent, text) {
+    const progressBar = document.getElementById('vlm-progress-bar');
+    const progressFill = document.getElementById('vlm-progress-fill');
+    const progressText = document.getElementById('vlm-progress-text');
+
+    if (!progressBar) return;
+
+    progressBar.style.display = 'block';
+    progressFill.style.width = `${percent}%`;
+    progressText.textContent = text || `${percent}%`;
+}
+
+function vlmHideProgress() {
+    const progressBar = document.getElementById('vlm-progress-bar');
+    if (progressBar) progressBar.style.display = 'none';
+}
+
+window.toggleVLMLogPanel = function() {
+    const logPanel = document.getElementById('vlm-log-panel');
+    if (logPanel) {
+        logPanel.style.display = logPanel.style.display === 'none' ? 'block' : 'none';
+    }
+};
 
 function initVLMListeners() {
     const fileInput = document.getElementById('vlm-file-input');
@@ -2492,49 +2546,84 @@ async function analyzeVLM() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analiz ediliyor...';
     btn.disabled = true;
 
+    // Clear and show log panel
+    vlmClearLog();
+    const model = document.getElementById('vlm-model-select').value;
+    const startTime = Date.now();
+
+    vlmLog(`Analiz baslatiliyor...`, 'info');
+    vlmLog(`Model: ${model}`, 'info');
+    vlmLog(`Dosya: ${currentState.vlmFile.name} (${(currentState.vlmFile.size / 1024 / 1024).toFixed(2)} MB)`, 'info');
+
     try {
         const formData = new FormData();
         formData.append('file', currentState.vlmFile);
-        formData.append('model', document.getElementById('vlm-model-select').value);
+        formData.append('model', model);
         formData.append('analyze_persons', document.getElementById('vlm-analyze-persons').checked);
         formData.append('analyze_logos', document.getElementById('vlm-analyze-logos').checked);
         formData.append('analyze_text', document.getElementById('vlm-analyze-text').checked);
 
         let endpoint = '/analyze-image';
+        let totalFrames = 1;
 
         if (currentState.vlmMode === 'video') {
             endpoint = '/analyze-video';
-            formData.append('frame_interval', document.getElementById('vlm-frame-interval').value);
-            formData.append('max_frames', document.getElementById('vlm-max-frames').value);
+            const frameInterval = document.getElementById('vlm-frame-interval').value;
+            const maxFrames = document.getElementById('vlm-max-frames').value;
+            formData.append('frame_interval', frameInterval);
+            formData.append('max_frames', maxFrames);
+            totalFrames = parseInt(maxFrames);
+
+            vlmLog(`Video modu: ${frameInterval}s aralik, max ${maxFrames} kare`, 'info');
         }
+
+        vlmLog(`Model yukleniyor (ilk istek yavas olabilir)...`, 'warning');
+        vlmSetProgress(10, 'Model yukleniyor...');
 
         const response = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             body: formData
         });
 
+        vlmSetProgress(90, 'Sonuclar isleniyor...');
+        vlmLog(`Sunucudan yanit alindi, sonuclar isleniyor...`, 'info');
+
         const data = await response.json();
+        const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (data.success) {
             currentState.vlmResult = data;
 
+            vlmSetProgress(100, 'Tamamlandi!');
+            vlmLog(`Analiz tamamlandi! (${totalTime}s)`, 'success');
+
             if (currentState.vlmMode === 'video') {
+                vlmLog(`Analiz edilen kare: ${data.frames_analyzed}`, 'success');
+                vlmLog(`Tespit edilen kisi: ${data.unique_persons?.length || 0}`, 'success');
+                vlmLog(`Tespit edilen logo: ${data.unique_logos?.length || 0}`, 'success');
                 displayVLMVideoResults(data);
             } else {
+                vlmLog(`Tespit edilen kisi: ${data.persons?.length || 0}`, 'success');
+                vlmLog(`Tespit edilen logo: ${data.logos?.length || 0}`, 'success');
                 displayVLMImageResults(data);
             }
 
             showToast('Analiz tamamlandi!', 'success');
         } else {
+            vlmSetProgress(0, 'Hata!');
+            vlmLog(`HATA: ${data.error}`, 'error');
             showToast(`Hata: ${data.error}`, 'error');
         }
 
     } catch (error) {
         console.error('VLM analysis error:', error);
+        vlmLog(`HATA: ${error.message}`, 'error');
+        vlmSetProgress(0, 'Hata!');
         showToast('Analiz hatasi: ' + error.message, 'error');
     } finally {
         btn.innerHTML = originalContent;
         btn.disabled = false;
+        setTimeout(() => vlmHideProgress(), 2000);
     }
 }
 
