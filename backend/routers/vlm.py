@@ -27,11 +27,23 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 # Available VLM models
 VLM_MODELS = [
     VLMModelInfo(
+        name="qwen3-vl:8b",
+        size="6GB",
+        description="Qwen3-VL 8B - Hizli, 32 dil OCR, Turkce destekli",
+        supports_video=True,
+        recommended=True
+    ),
+    VLMModelInfo(
+        name="qwen3-vl:32b",
+        size="21GB",
+        description="Qwen3-VL 32B - En yeni, 256K context, 32 dil OCR",
+        supports_video=True
+    ),
+    VLMModelInfo(
         name="qwen2.5vl:32b",
         size="21GB",
         description="Qwen2.5-VL 32B - Dengeli performans, 29 dil OCR",
-        supports_video=True,
-        recommended=True
+        supports_video=True
     ),
     VLMModelInfo(
         name="qwen2.5vl:72b",
@@ -43,18 +55,6 @@ VLM_MODELS = [
         name="qwen2.5vl:7b",
         size="6GB",
         description="Qwen2.5-VL 7B - Hizli, hafif",
-        supports_video=True
-    ),
-    VLMModelInfo(
-        name="qwen3-vl:32b",
-        size="21GB",
-        description="Qwen3-VL 32B - En yeni, 256K context, 32 dil OCR",
-        supports_video=True
-    ),
-    VLMModelInfo(
-        name="qwen3-vl:8b",
-        size="6GB",
-        description="Qwen3-VL 8B - Hizli, guncel",
         supports_video=True
     ),
 ]
@@ -289,7 +289,7 @@ async def vlm_health():
 @router.post("/analyze-image", response_model=VLMImageAnalysisResponse)
 async def analyze_image(
     file: UploadFile = File(...),
-    model: str = Form("qwen2.5vl:32b"),
+    model: str = Form("qwen3-vl:8b"),
     analyze_persons: bool = Form(True),
     analyze_logos: bool = Form(True),
     analyze_text: bool = Form(True),
@@ -373,7 +373,7 @@ async def analyze_image(
 @router.post("/analyze-video", response_model=VLMVideoAnalysisResponse)
 async def analyze_video(
     file: UploadFile = File(...),
-    model: str = Form("qwen2.5vl:32b"),
+    model: str = Form("qwen3-vl:8b"),
     frame_interval: float = Form(5.0),
     max_frames: int = Form(50),
     analyze_persons: bool = Form(True),
@@ -494,7 +494,7 @@ async def analyze_video(
 async def vlm_chat(
     file: UploadFile = File(...),
     message: str = Form(...),
-    model: str = Form("qwen2.5vl:32b")
+    model: str = Form("qwen3-vl:8b")
 ):
     """
     Chat with VLM about an image. Ask any question about the image content.
