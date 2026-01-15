@@ -10,8 +10,36 @@ import time
 import json
 import re
 import httpx
+import logging
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("VLM")
+
+def log_info(msg):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[VLM {timestamp}] ℹ️  {msg}", flush=True)
+
+def log_success(msg):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[VLM {timestamp}] ✅ {msg}", flush=True)
+
+def log_warning(msg):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[VLM {timestamp}] ⚠️  {msg}", flush=True)
+
+def log_error(msg):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[VLM {timestamp}] ❌ {msg}", flush=True)
+
+def log_progress(current, total, msg=""):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    pct = int((current / total) * 100) if total > 0 else 0
+    bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
+    print(f"[VLM {timestamp}] [{bar}] {pct}% - {msg}", flush=True)
 
 from models import (
     VLMImageAnalysisResponse, VLMVideoAnalysisResponse,
@@ -99,6 +127,8 @@ def extract_video_frames(video_path: str, interval: float, max_frames: int) -> l
     Extract frames from video at specified intervals using FFmpeg.
     Returns list of (timestamp, frame_path) tuples.
     """
+    log_info("FFmpeg ile video bilgisi alınıyor...")
+
     # Get video duration
     duration_cmd = [
         'ffprobe', '-v', 'error',
@@ -109,6 +139,8 @@ def extract_video_frames(video_path: str, interval: float, max_frames: int) -> l
     result = subprocess.run(duration_cmd, capture_output=True, text=True)
     duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
+    log_info(f"Video süresi: {duration:.1f} saniye")
+
     frames = []
     temp_dir = tempfile.mkdtemp()
 
@@ -118,6 +150,9 @@ def extract_video_frames(video_path: str, interval: float, max_frames: int) -> l
     while current < duration and len(timestamps) < max_frames:
         timestamps.append(current)
         current += interval
+
+    log_info(f"Çıkarılacak kare sayısı: {len(timestamps)}")
+    log_info(f"Kare aralığı: her {interval} saniyede bir")
 
     # Extract frames
     for i, ts in enumerate(timestamps):
@@ -134,6 +169,11 @@ def extract_video_frames(video_path: str, interval: float, max_frames: int) -> l
         if os.path.exists(output_path):
             frames.append((ts, output_path))
 
+        # Progress log every 10 frames
+        if (i + 1) % 10 == 0 or i == len(timestamps) - 1:
+            log_progress(i + 1, len(timestamps), f"Kare çıkarma: {i + 1}/{len(timestamps)}")
+
+    log_success(f"Toplam {len(frames)} kare başarıyla çıkarıldı")
     return frames, duration, temp_dir
 
 
@@ -175,48 +215,83 @@ async def ensure_model_available(model: str) -> bool:
 
     # Already verified this session
     if model in _verified_models:
+        log_info(f"Model '{model}' zaten doğrulandı (cache)")
         return True
+
+    log_info(f"Model kontrol ediliyor: {model}")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             if response.status_code == 200:
                 models = response.json().get("models", [])
+                model_names = [m.get("name", "") for m in models]
+                log_info(f"Mevcut modeller: {', '.join(model_names) if model_names else 'yok'}")
+
                 for m in models:
                     name = m.get("name", "")
                     # Check exact or partial match
                     if model == name or model in name or name.startswith(model.split(":")[0]):
                         _verified_models.add(model)
-                        print(f"Model '{model}' hazir.")
+                        size = m.get("size", 0)
+                        size_gb = size / (1024**3) if size else 0
+                        log_success(f"Model '{model}' hazır ({size_gb:.1f} GB)")
                         return True
         except Exception as e:
-            print(f"Model kontrol hatasi: {e}")
+            log_warning(f"Model kontrol hatası: {e}")
             # Continue anyway - let Ollama handle it
             return True
 
     # Model not found, pull it
-    print(f"Model '{model}' bulunamadi, indiriliyor...")
+    log_warning(f"Model '{model}' bulunamadı, indirme başlatılıyor...")
+    log_info("Bu işlem model boyutuna göre birkaç dakika sürebilir...")
+
     async with httpx.AsyncClient(timeout=1800.0) as client:
         try:
-            response = await client.post(
+            # Use streaming to show download progress
+            async with client.stream(
+                "POST",
                 f"{OLLAMA_BASE_URL}/api/pull",
-                json={"name": model, "stream": False}
-            )
-            if response.status_code == 200:
-                _verified_models.add(model)
-                print(f"Model '{model}' basariyla indirildi!")
-                return True
+                json={"name": model, "stream": True},
+                timeout=1800.0
+            ) as response:
+                last_status = ""
+                async for line in response.aiter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            status = data.get("status", "")
+
+                            if "completed" in data and "total" in data:
+                                completed = data["completed"]
+                                total = data["total"]
+                                log_progress(completed, total, status)
+                            elif status != last_status:
+                                log_info(f"İndirme durumu: {status}")
+                                last_status = status
+
+                        except json.JSONDecodeError:
+                            pass
+
+            _verified_models.add(model)
+            log_success(f"Model '{model}' başarıyla indirildi!")
+            return True
         except Exception as e:
-            print(f"Model indirme hatasi: {e}")
+            log_error(f"Model indirme hatası: {e}")
 
     return False
 
 
-async def call_vlm(model: str, image_base64: str, prompt: str) -> dict:
+async def call_vlm(model: str, image_base64: str, prompt: str, frame_info: str = "") -> dict:
     """Call Ollama VLM API with image."""
 
     # One-time check per model per session
     await ensure_model_available(model)
+
+    frame_prefix = f"[{frame_info}] " if frame_info else ""
+    log_info(f"{frame_prefix}VLM çağrısı başlatılıyor: {model}")
+
+    call_start = time.time()
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         response = await client.post(
@@ -233,24 +308,38 @@ async def call_vlm(model: str, image_base64: str, prompt: str) -> dict:
             }
         )
 
+        call_duration = time.time() - call_start
+
         if response.status_code != 200:
+            log_error(f"{frame_prefix}Ollama hatası: {response.text}")
             raise HTTPException(status_code=response.status_code, detail=f"Ollama error: {response.text}")
 
-        return response.json()
+        result = response.json()
+
+        # Log performance metrics
+        eval_count = result.get("eval_count", 0)
+        eval_duration = result.get("eval_duration", 0) / 1e9 if result.get("eval_duration") else 0
+        tokens_per_sec = eval_count / eval_duration if eval_duration > 0 else 0
+
+        log_success(f"{frame_prefix}VLM yanıtı alındı: {call_duration:.1f}s, {eval_count} token, {tokens_per_sec:.1f} tok/s")
+
+        return result
 
 
 @router.get("/vlm-models")
 async def list_vlm_models():
     """List available VLM models"""
+    log_info("VLM model listesi istendi")
     return {
         "models": [m.model_dump() for m in VLM_MODELS],
-        "recommended": "qwen2.5vl:32b"
+        "recommended": "qwen3-vl:4b"
     }
 
 
 @router.get("/vlm-health")
 async def vlm_health():
     """Check VLM service health and available models"""
+    log_info("VLM sağlık kontrolü başlatıldı")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
@@ -266,19 +355,22 @@ async def vlm_health():
                     if "qwen" in name.lower() and "vl" in name.lower():
                         vlm_available.append(name)
 
+                log_success(f"Ollama bağlantısı başarılı. {len(vlm_available)} VLM modeli mevcut")
                 return {
                     "status": "ready",
                     "ollama_connected": True,
                     "vlm_models_available": vlm_available,
-                    "recommended_model": vlm_available[0] if vlm_available else "qwen2.5vl:32b (pull gerekli)"
+                    "recommended_model": vlm_available[0] if vlm_available else "qwen3-vl:4b (pull gerekli)"
                 }
             else:
+                log_error(f"Ollama bağlantı hatası: {response.status_code}")
                 return {
                     "status": "error",
                     "ollama_connected": False,
                     "message": "Ollama connection failed"
                 }
     except Exception as e:
+        log_error(f"Sağlık kontrolü hatası: {str(e)}")
         return {
             "status": "error",
             "ollama_connected": False,
@@ -301,8 +393,16 @@ async def analyze_image(
     """
     start_time = time.time()
 
+    log_info("=" * 50)
+    log_info("GÖRSEL ANALİZİ BAŞLADI")
+    log_info("=" * 50)
+    log_info(f"Dosya: {file.filename}")
+    log_info(f"Model: {model}")
+    log_info(f"Analiz: Kişi={analyze_persons}, Logo={analyze_logos}, Metin={analyze_text}")
+
     # Validate file type
     if not file.content_type or not file.content_type.startswith('image/'):
+        log_error(f"Desteklenmeyen dosya türü: {file.content_type}")
         return VLMImageAnalysisResponse(
             success=False,
             error=f"Desteklenmeyen dosya türü: {file.content_type}. Sadece görsel dosyaları desteklenir."
@@ -310,19 +410,28 @@ async def analyze_image(
 
     try:
         # Read and encode image
+        log_info("Görsel okunuyor ve encode ediliyor...")
         content = await file.read()
+        file_size_mb = len(content) / (1024 * 1024)
+        log_info(f"Dosya boyutu: {file_size_mb:.2f} MB")
+
         image_base64 = encode_image_to_base64(content)
+        log_success("Görsel başarıyla encode edildi")
 
         # Build prompt
         if custom_prompt:
             prompt = custom_prompt
+            log_info("Özel prompt kullanılıyor")
         else:
             prompt = PERSON_LOGO_PROMPT
+            log_info("Standart analiz promptu kullanılıyor")
 
         # Call VLM
+        log_info("Model çağrılıyor, lütfen bekleyin...")
         result = await call_vlm(model, image_base64, prompt)
 
         raw_response = result.get("response", "")
+        log_info("Yanıt parse ediliyor...")
         parsed = parse_vlm_response(raw_response)
 
         # Build response
@@ -350,6 +459,18 @@ async def analyze_image(
 
         processing_time = (time.time() - start_time) * 1000
 
+        # Log results summary
+        log_info("-" * 50)
+        log_success(f"ANALİZ TAMAMLANDI - {processing_time/1000:.1f} saniye")
+        log_info(f"Tespit edilen kişi sayısı: {len(persons)}")
+        for p in persons:
+            log_info(f"  - {p.name} ({p.title or 'unvan yok'}) [%{int(p.confidence*100)}]")
+        log_info(f"Tespit edilen logo sayısı: {len(logos)}")
+        for l in logos:
+            log_info(f"  - {l.company} [%{int(l.confidence*100)}]")
+        log_info(f"Tespit edilen metin sayısı: {len(texts)}")
+        log_info("=" * 50)
+
         return VLMImageAnalysisResponse(
             success=True,
             persons=persons,
@@ -363,6 +484,8 @@ async def analyze_image(
 
     except Exception as e:
         import traceback
+        log_error(f"Analiz hatası: {str(e)}")
+        log_error(traceback.format_exc())
         return VLMImageAnalysisResponse(
             success=False,
             error=str(e) + "\n" + traceback.format_exc(),
@@ -385,9 +508,18 @@ async def analyze_video(
     """
     start_time = time.time()
 
+    log_info("=" * 60)
+    log_info("VIDEO ANALİZİ BAŞLADI")
+    log_info("=" * 60)
+    log_info(f"Dosya: {file.filename}")
+    log_info(f"Model: {model}")
+    log_info(f"Kare aralığı: {frame_interval} saniye")
+    log_info(f"Maksimum kare: {max_frames}")
+
     # Validate file type
     valid_types = ['video/mp4', 'video/webm', 'video/x-msvideo', 'video/quicktime', 'video/x-matroska']
     if not file.content_type or not any(file.content_type.startswith(t) for t in valid_types):
+        log_error(f"Desteklenmeyen dosya türü: {file.content_type}")
         return VLMVideoAnalysisResponse(
             success=False,
             error=f"Desteklenmeyen dosya türü: {file.content_type}. MP4, WEBM, AVI, MOV, MKV desteklenir."
@@ -398,37 +530,61 @@ async def analyze_video(
 
     try:
         # Save video to temp file
+        log_info("Video okunuyor...")
         content = await file.read()
+        file_size_mb = len(content) / (1024 * 1024)
+        log_info(f"Dosya boyutu: {file_size_mb:.2f} MB")
+
         suffix = os.path.splitext(file.filename)[1] if file.filename else '.mp4'
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(content)
             tmp_video_path = tmp.name
 
+        log_success("Video geçici dosyaya kaydedildi")
+
         # Extract frames
+        log_info("Kareler çıkarılıyor (FFmpeg)...")
         frames_data, duration, temp_dir = extract_video_frames(
             tmp_video_path, frame_interval, max_frames
         )
 
+        log_success(f"Video süresi: {format_timestamp(duration)} ({duration:.1f} saniye)")
+        log_success(f"Çıkarılan kare sayısı: {len(frames_data)}")
+
         if not frames_data:
+            log_error("Video kareleri çıkarılamadı!")
             return VLMVideoAnalysisResponse(
                 success=False,
                 error="Video kareleri çıkarılamadı. FFmpeg kurulu olduğundan emin olun."
             )
 
         # Analyze each frame
+        log_info("-" * 60)
+        log_info("KARE ANALİZİ BAŞLIYOR")
+        log_info("-" * 60)
+
         video_frames = []
         all_persons = set()
         all_logos = set()
+        total_frames = len(frames_data)
 
-        for timestamp, frame_path in frames_data:
+        for idx, (timestamp, frame_path) in enumerate(frames_data):
+            frame_num = idx + 1
+            ts_formatted = format_timestamp(timestamp)
+
+            log_progress(frame_num, total_frames, f"Kare {frame_num}/{total_frames} - {ts_formatted}")
+
             with open(frame_path, 'rb') as f:
                 frame_bytes = f.read()
 
             frame_base64 = encode_image_to_base64(frame_bytes)
 
             # Call VLM for this frame
-            result = await call_vlm(model, frame_base64, PERSON_LOGO_PROMPT)
+            frame_start = time.time()
+            result = await call_vlm(model, frame_base64, PERSON_LOGO_PROMPT, f"Kare {frame_num}")
+            frame_duration = time.time() - frame_start
+
             parsed = parse_vlm_response(result.get("response", ""))
 
             # Extract persons and logos
@@ -451,15 +607,43 @@ async def analyze_video(
                 frame_logos.append(logo)
                 all_logos.add(logo.company)
 
+            # Log frame results
+            if frame_persons or frame_logos:
+                log_info(f"  Kare {frame_num} tespitler: {len(frame_persons)} kişi, {len(frame_logos)} logo")
+                for p in frame_persons:
+                    log_info(f"    - Kişi: {p.name}")
+                for l in frame_logos:
+                    log_info(f"    - Logo: {l.company}")
+
             video_frames.append(VideoFrame(
                 timestamp=timestamp,
-                timestamp_formatted=format_timestamp(timestamp),
+                timestamp_formatted=ts_formatted,
                 persons=frame_persons,
                 logos=frame_logos,
                 scene_description=parsed.get("scene_description", "")
             ))
 
+            # Estimate remaining time
+            elapsed = time.time() - start_time
+            avg_per_frame = elapsed / frame_num
+            remaining = avg_per_frame * (total_frames - frame_num)
+            log_info(f"  Tahmini kalan süre: {format_timestamp(remaining)}")
+
         processing_time = (time.time() - start_time) * 1000
+
+        # Final summary
+        log_info("=" * 60)
+        log_success("VIDEO ANALİZİ TAMAMLANDI")
+        log_info("=" * 60)
+        log_info(f"Toplam süre: {processing_time/1000:.1f} saniye")
+        log_info(f"Analiz edilen kare: {len(video_frames)}")
+        log_info(f"Benzersiz kişi sayısı: {len(all_persons)}")
+        for p in sorted(all_persons):
+            log_info(f"  - {p}")
+        log_info(f"Benzersiz logo sayısı: {len(all_logos)}")
+        for l in sorted(all_logos):
+            log_info(f"  - {l}")
+        log_info("=" * 60)
 
         return VLMVideoAnalysisResponse(
             success=True,
@@ -474,6 +658,8 @@ async def analyze_video(
 
     except Exception as e:
         import traceback
+        log_error(f"Video analiz hatası: {str(e)}")
+        log_error(traceback.format_exc())
         return VLMVideoAnalysisResponse(
             success=False,
             error=str(e) + "\n" + traceback.format_exc(),
@@ -484,10 +670,12 @@ async def analyze_video(
         # Cleanup
         if tmp_video_path and os.path.exists(tmp_video_path):
             os.unlink(tmp_video_path)
+            log_info("Geçici video dosyası temizlendi")
 
         if temp_dir and os.path.exists(temp_dir):
             import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
+            log_info("Geçici kare dosyaları temizlendi")
 
 
 @router.post("/vlm-chat")
@@ -501,7 +689,15 @@ async def vlm_chat(
     """
     start_time = time.time()
 
+    log_info("=" * 50)
+    log_info("VLM SOHBET BAŞLADI")
+    log_info("=" * 50)
+    log_info(f"Dosya: {file.filename}")
+    log_info(f"Model: {model}")
+    log_info(f"Soru: {message[:100]}{'...' if len(message) > 100 else ''}")
+
     if not file.content_type or not file.content_type.startswith('image/'):
+        log_error("Desteklenmeyen dosya türü")
         return {
             "success": False,
             "error": "Sadece görsel dosyaları desteklenir."
@@ -509,21 +705,33 @@ async def vlm_chat(
 
     try:
         content = await file.read()
+        file_size_mb = len(content) / (1024 * 1024)
+        log_info(f"Dosya boyutu: {file_size_mb:.2f} MB")
+
         image_base64 = encode_image_to_base64(content)
 
         # Add Turkish context to the prompt
         prompt = f"""Türkçe yanıt ver. {message}"""
 
+        log_info("Model çağrılıyor...")
         result = await call_vlm(model, image_base64, prompt)
+
+        processing_time = (time.time() - start_time) * 1000
+        response_text = result.get("response", "")
+
+        log_success(f"SOHBET TAMAMLANDI - {processing_time/1000:.1f} saniye")
+        log_info(f"Yanıt uzunluğu: {len(response_text)} karakter")
+        log_info("=" * 50)
 
         return {
             "success": True,
-            "response": result.get("response", ""),
-            "processing_time_ms": (time.time() - start_time) * 1000,
+            "response": response_text,
+            "processing_time_ms": processing_time,
             "model_used": model
         }
 
     except Exception as e:
+        log_error(f"Sohbet hatası: {str(e)}")
         return {
             "success": False,
             "error": str(e),
