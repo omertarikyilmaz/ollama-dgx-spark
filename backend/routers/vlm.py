@@ -82,16 +82,21 @@ VLM_MODELS = [
 ]
 
 # System prompts for analysis
-PERSON_LOGO_PROMPT = """Haber görüntüsünü analiz et.
+PERSON_LOGO_PROMPT = """Bu bir Türk haber kanalı görüntüsü. Analiz et ve JSON döndür.
 
-ÖNCELİKLE ekranın alt kısmındaki HABER BANTLARINI (lower third/chyron) oku. Orada kişi isimleri ve unvanları yazar.
+GÖREVLER:
+1. KİŞİLER: Ekrandaki tüm kişileri bul. Alt yazıda (lower third/chyron) isim varsa oku ve eşleştir.
+2. LOGOLAR: Kanal logosu ve diğer şirket/kurum logolarını tespit et.
+3. METİNLER: Haber başlığı, alt yazılar, ekrandaki tüm Türkçe metinleri oku.
 
-KURAL: Ekranda bir kişi görüyorsan VE alt bantta isim yazıyorsa, o isim o kişiye aittir.
+JSON FORMAT:
+{"persons":[{"name":"Ahmet Yılmaz","title":"Ekonomist"}],"logos":[{"company":"TRT"},{"company":"CNN Türk"}],"texts":["Haber başlığı buraya"],"scene":"Stüdyoda sunucu konuşuyor"}
 
-JSON ver:
-{"persons":[{"name":"İSİM","title":"UNVAN"}],"logos":[{"company":"ŞİRKET"}],"scene":"KISA AÇIKLAMA"}
-
-Sadece gerçekten okuduklarını yaz. Alt bantta isim yoksa kişiyi ekleme."""
+KURALLAR:
+- İsim okunamıyorsa "Bilinmeyen Kişi 1", "Bilinmeyen Kişi 2" yaz
+- Logo görüyorsan mutlaka ekle
+- Tüm metinleri Türkçe doğru oku
+- Boş array kullanma, tespit yoksa o alanı koy ama boş bırak"""
 
 
 def encode_image_to_base64(image_bytes: bytes) -> str:
