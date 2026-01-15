@@ -54,18 +54,43 @@ router = APIRouter(tags=["VLM"])
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # GX10 128GB FULL POWER - 10 parallel requests
-# 32B model (~21GB) + 10 contexts (~50GB) = ~71GB / 128GB
 PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "10"))
-DEFAULT_VLM_MODEL = os.getenv("VLM_MODEL", "qwen3-vl:32b")
+DEFAULT_VLM_MODEL = os.getenv("VLM_MODEL", "qwen2.5vl:32b")
 
-# Available VLM models
+# Available VLM models - All Qwen VL models
 VLM_MODELS = [
+    # Qwen 2.5 VL Series
+    VLMModelInfo(
+        name="qwen2.5vl:32b",
+        size="21GB",
+        description="Qwen2.5-VL 32B - Stabil, 29 dil OCR, GX10 optimize",
+        supports_video=True,
+        recommended=True
+    ),
+    VLMModelInfo(
+        name="qwen2.5vl:72b",
+        size="47GB",
+        description="Qwen2.5-VL 72B - En buyuk, maksimum kalite",
+        supports_video=True
+    ),
+    VLMModelInfo(
+        name="qwen2.5vl:7b",
+        size="5GB",
+        description="Qwen2.5-VL 7B - Hizli, dengeli",
+        supports_video=True
+    ),
+    VLMModelInfo(
+        name="qwen2.5vl:3b",
+        size="2GB",
+        description="Qwen2.5-VL 3B - Cok hizli",
+        supports_video=True
+    ),
+    # Qwen 3 VL Series
     VLMModelInfo(
         name="qwen3-vl:32b",
         size="21GB",
-        description="Qwen3-VL 32B - EN KALİTELİ, 256K context, GX10 icin optimize",
-        supports_video=True,
-        recommended=True
+        description="Qwen3-VL 32B - Yeni nesil, 256K context",
+        supports_video=True
     ),
     VLMModelInfo(
         name="qwen3-vl:8b",
