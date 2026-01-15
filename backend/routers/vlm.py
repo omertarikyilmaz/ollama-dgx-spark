@@ -616,69 +616,80 @@ async def analyze_video(
         log_info("Model yükleniyor (ilk kez)...")
         await ensure_model_available(model)
 
-        # PARALLEL BATCH PROCESSING
+        # WORKER POOL - Biri bitince hemen sıradaki başlar
         log_info("-" * 60)
-        log_info(f"PARALEL KARE ANALİZİ ({batch_size} kare aynı anda)")
+        log_info(f"WORKER POOL MOD ({batch_size} worker aynı anda)")
         log_info("-" * 60)
 
-        video_frames_dict = {}  # Store by frame_num to preserve order
+        video_frames_dict = {}
         all_persons = set()
         all_logos = set()
         total_frames = len(frames_data)
-        num_batches = (total_frames + batch_size - 1) // batch_size
 
-        for batch_idx in range(num_batches):
-            batch_start = batch_idx * batch_size
-            batch_end = min(batch_start + batch_size, total_frames)
-            batch_frames = frames_data[batch_start:batch_end]
+        # Progress tracking
+        completed_count = 0
+        completed_lock = asyncio.Lock()
 
-            log_info(f"Batch {batch_idx + 1}/{num_batches}: Kare {batch_start + 1}-{batch_end} işleniyor...")
-            batch_start_time = time.time()
+        # Semaphore - max concurrent workers
+        semaphore = asyncio.Semaphore(batch_size)
 
-            # Create parallel tasks for this batch
-            tasks = []
-            for i, (timestamp, frame_path) in enumerate(batch_frames):
-                frame_num = batch_start + i + 1
-                task = analyze_single_frame(model, frame_path, timestamp, frame_num)
-                tasks.append(task)
+        async def process_frame_with_semaphore(frame_data, frame_num):
+            """Process single frame with semaphore control"""
+            nonlocal completed_count
 
-            # Run batch in parallel
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            async with semaphore:
+                timestamp, frame_path = frame_data
+                frame_start = time.time()
 
-            # Process results
-            batch_persons = 0
-            batch_logos = 0
-            for result in results:
-                if isinstance(result, Exception):
-                    log_error(f"Kare hatası: {result}")
-                    continue
+                try:
+                    result = await analyze_single_frame(model, frame_path, timestamp, frame_num)
+                    frame_duration = time.time() - frame_start
 
-                frame_num, video_frame, person_names, logo_names = result
-                video_frames_dict[frame_num] = video_frame
-                all_persons.update(person_names)
-                all_logos.update(logo_names)
-                batch_persons += len(person_names)
-                batch_logos += len(logo_names)
+                    # Update progress
+                    async with completed_lock:
+                        completed_count += 1
+                        current = completed_count
 
-            batch_duration = time.time() - batch_start_time
-            frames_in_batch = len(batch_frames)
-            per_frame = batch_duration / frames_in_batch if frames_in_batch > 0 else 0
+                    _, video_frame, person_names, logo_names = result
 
-            log_success(f"Batch {batch_idx + 1} tamamlandı: {batch_duration:.1f}s ({per_frame:.1f}s/kare)")
-            log_info(f"  Tespit: {batch_persons} kişi, {batch_logos} logo")
+                    # Log completion
+                    detections = []
+                    if person_names:
+                        detections.append(f"{len(person_names)} kişi")
+                    if logo_names:
+                        detections.append(f"{len(logo_names)} logo")
+                    det_str = ", ".join(detections) if detections else "tespit yok"
 
-            # Progress
-            completed = batch_end
-            log_progress(completed, total_frames, f"{completed}/{total_frames} kare tamamlandı")
+                    log_progress(current, total_frames,
+                        f"Kare {frame_num} tamamlandı ({frame_duration:.1f}s) - {det_str}")
 
-            # ETA
-            elapsed = time.time() - start_time
-            if completed > 0:
-                remaining_frames = total_frames - completed
-                remaining_batches = (remaining_frames + batch_size - 1) // batch_size
-                avg_batch_time = elapsed / (batch_idx + 1)
-                eta = remaining_batches * avg_batch_time
-                log_info(f"  Tahmini kalan süre: {format_timestamp(eta)}")
+                    return result
+
+                except Exception as e:
+                    async with completed_lock:
+                        completed_count += 1
+                    log_error(f"Kare {frame_num} hatası: {e}")
+                    return None
+
+        # Start ALL tasks at once - semaphore controls concurrency
+        log_info(f"Tüm {total_frames} kare kuyruğa alındı, {batch_size} worker çalışıyor...")
+
+        tasks = [
+            process_frame_with_semaphore(frame_data, idx + 1)
+            for idx, frame_data in enumerate(frames_data)
+        ]
+
+        # Run all with semaphore limiting concurrency
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect results
+        for result in results:
+            if result is None or isinstance(result, Exception):
+                continue
+            frame_num, video_frame, person_names, logo_names = result
+            video_frames_dict[frame_num] = video_frame
+            all_persons.update(person_names)
+            all_logos.update(logo_names)
 
         # Sort frames by frame number
         video_frames = [video_frames_dict[i] for i in sorted(video_frames_dict.keys())]
