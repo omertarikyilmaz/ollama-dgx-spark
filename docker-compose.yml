@@ -12,11 +12,10 @@ services:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_FLASH_ATTENTION=true
       - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-8}
-      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-2}
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m}
-      # GX10 128GB unified memory - use more
-      - OLLAMA_GPU_MEMORY_FRACTION=0.9
+      # GX10 128GB - 32B model (21GB) ile 4 paralel istek
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
     deploy:
       resources:
         reservations:

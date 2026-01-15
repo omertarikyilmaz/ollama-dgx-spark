@@ -54,28 +54,29 @@ router = APIRouter(tags=["VLM"])
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # Parallel processing config for GX10 (128GB unified memory)
-PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "8"))  # Process 8 frames at once
-DEFAULT_VLM_MODEL = os.getenv("VLM_MODEL", "qwen3-vl:8b")
+# 32B model = ~21GB, 128GB memory = 4 parallel requests comfortably
+PARALLEL_BATCH_SIZE = int(os.getenv("VLM_BATCH_SIZE", "4"))
+DEFAULT_VLM_MODEL = os.getenv("VLM_MODEL", "qwen3-vl:32b")
 
 # Available VLM models
 VLM_MODELS = [
     VLMModelInfo(
-        name="qwen3-vl:8b",
-        size="6GB",
-        description="Qwen3-VL 8B - Kaliteli + Paralel, 32 dil OCR, Logo/Kisi tespiti",
+        name="qwen3-vl:32b",
+        size="21GB",
+        description="Qwen3-VL 32B - EN KALİTELİ, 256K context, GX10 icin optimize",
         supports_video=True,
         recommended=True
     ),
     VLMModelInfo(
-        name="qwen3-vl:4b",
-        size="3.1GB",
-        description="Qwen3-VL 4B - Hizli, 32 dil OCR, Turkce destekli",
+        name="qwen3-vl:8b",
+        size="6GB",
+        description="Qwen3-VL 8B - Hizli + Kaliteli",
         supports_video=True
     ),
     VLMModelInfo(
-        name="qwen3-vl:32b",
-        size="21GB",
-        description="Qwen3-VL 32B - En kaliteli, 256K context",
+        name="qwen3-vl:4b",
+        size="3.1GB",
+        description="Qwen3-VL 4B - En Hizli",
         supports_video=True
     ),
 ]
