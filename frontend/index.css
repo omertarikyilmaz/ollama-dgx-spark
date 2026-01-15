@@ -2035,6 +2035,23 @@ header {
     color: var(--text-primary);
 }
 
+.vlm-auto-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    color: var(--accent-purple);
+    margin-bottom: 0.5rem;
+}
+
+.vlm-auto-badge i {
+    font-size: 0.9rem;
+}
+
 .vlm-options .checkboxes input[type="checkbox"] {
     width: 18px;
     height: 18px;
